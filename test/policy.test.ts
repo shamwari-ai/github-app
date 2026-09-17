@@ -346,3 +346,31 @@ test("a thrown non-Error is not stringified into the response either", async () 
   const res = toolError("nyuchi_comment", { token: "ghs_leaked" });
   assert.doesNotMatch(res.content[0].text, /ghs_/);
 });
+
+test("an argument error names the field so the caller can fix the call", async () => {
+  const { toolError, ArgumentError } = await import("../src/mcp");
+  const res = toolError(
+    "nyuchi_get_pull_request",
+    new ArgumentError('missing or invalid "number": expected a number'),
+  );
+  assert.equal(res.isError, true);
+  assert.match(res.content[0].text, /"number".*expected a number/);
+});
+
+test("a bad argument reaches the caller through tools/call, not a stub", async () => {
+  const { handleRpc } = await import("../src/mcp");
+  const res = (await handleRpc(
+    {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: {
+        name: "nyuchi_get_pull_request",
+        arguments: { repo: "nyuchi/web-services", number: "twelve" },
+      },
+    } as never,
+    {} as Env,
+  )) as { result: { isError?: boolean; content: Array<{ text: string }> } };
+  assert.equal(res.result.isError, true);
+  assert.match(res.result.content[0].text, /"number"/);
+});
