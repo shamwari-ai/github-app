@@ -22,7 +22,13 @@ GITHUB_API = "https://api.github.com"
 # (RELEASE_APP_ID), reused by explicit decision. The App holds Contents,
 # Pull requests and Workflows read/write; the two settings below are what
 # stop the agent inheriting all of that.
-GITHUB_APP_ID = "REPLACE_WITH_RELEASE_APP_ID"
+#
+# Committed rather than set in the dashboard for two reasons. An App ID is an
+# identifier, not a credential — it grants nothing without the private key,
+# which is a Worker secret. And `wrangler deploy` REPLACES the deployed [vars]
+# block, so a value set only in the dashboard is silently overwritten by the
+# next deploy; it has to live here to survive.
+GITHUB_APP_ID = "4980118"
 
 # OUTER BOUND — repositories this worker will touch at all. Checked before a
 # token is minted, so a repo outside this list never reaches GitHub. An empty
