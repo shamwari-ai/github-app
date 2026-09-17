@@ -1,0 +1,632 @@
+// GitHub App client for the MCP worker.
+//
+// A Worker cannot use the official Octokit App plumbing wholesale, so this
+// does the three things that matter by hand:
+//
+//   1. Sign an App JWT (RS256) with WebCrypto.
+//   2. Exchange it for an INSTALLATION token scoped down to one repository
+//      and a reduced permission set.
+//   3. Call the REST API with that token.
+//
+// Step 2 is the security story. The App this worker authenticates as is the
+// same one that mints release tokens, and it holds Contents, Pull requests
+// and Workflows read/write. An installation token may request a subset of
+// what the App holds, so the agent runs with `pull_requests: write`,
+// `issues: write`, `contents: read` and NO `workflows` — it can review and
+// file, it cannot push a workflow file or cut a release. One App, two very
+// different effective capabilities.
+
+import { type Env, splitCsv } from "./env";
+
+export class GitHubError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly detail: unknown,
+  ) {
+    super(message);
+    this.name = "GitHubError";
+  }
+}
+
+const api = (env: Env) => env.GITHUB_API || "https://api.github.com";
+
+const DEFAULT_PERMISSIONS =
+  "pull_requests:write,issues:write,contents:read,metadata:read";
+
+// ---------------------------------------------------------------------------
+// Repository allowlist
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve "owner/repo" and refuse anything outside GITHUB_ALLOWED_REPOS.
+ *
+ * Checked before a token is minted, so a repo outside the list never reaches
+ * GitHub at all. An unset/empty allowlist denies everything rather than
+ * allowing everything — a misconfigured worker should be useless, not open.
+ */
+export function resolveRepo(
+  env: Env,
+  repo: string,
+): { owner: string; name: string } {
+  const allowed = splitCsv(env.GITHUB_ALLOWED_REPOS);
+  if (allowed.length === 0) {
+    throw new GitHubError(
+      "no repositories are allowlisted (GITHUB_ALLOWED_REPOS is unset) — refusing every repo",
+      403,
+      null,
+    );
+  }
+  const slug = repo.trim();
+  if (!allowed.some((a) => a.toLowerCase() === slug.toLowerCase())) {
+    throw new GitHubError(
+      `repository "${slug}" is not allowlisted; permitted: ${allowed.join(", ")}`,
+      403,
+      null,
+    );
+  }
+  const [owner, name] = slug.split("/");
+  if (!owner || !name)
+    throw new GitHubError(
+      `malformed repo "${slug}", expected owner/repo`,
+      400,
+      null,
+    );
+  return { owner, name };
+}
+
+// ---------------------------------------------------------------------------
+// App JWT
+// ---------------------------------------------------------------------------
+
+function b64url(bytes: Uint8Array): string {
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+// derLength, pkcs1ToPkcs8 and pemBody are exported for the test suite only.
+// Nothing outside this module should be wrapping keys; they are public so the
+// tests exercise the real code rather than a copy that can drift from it.
+export function derLength(n: number): number[] {
+  if (n < 0x80) return [n];
+  const bytes: number[] = [];
+  let v = n;
+  while (v > 0) {
+    bytes.unshift(v & 0xff);
+    v >>= 8;
+  }
+  return [0x80 | bytes.length, ...bytes];
+}
+
+/**
+ * Wrap a PKCS#1 RSA key in the PKCS#8 envelope WebCrypto requires.
+ *
+ * GitHub hands you "BEGIN RSA PRIVATE KEY" (PKCS#1); crypto.subtle.importKey
+ * only takes 'pkcs8'. Rather than make every operator run
+ * `openssl pkcs8 -topk8`, wrap it here:
+ *
+ *   SEQUENCE { INTEGER 0, SEQUENCE { OID rsaEncryption, NULL }, OCTET STRING pkcs1 }
+ */
+export function pkcs1ToPkcs8(pkcs1: Uint8Array): Uint8Array {
+  const version = [0x02, 0x01, 0x00];
+  // AlgorithmIdentifier: rsaEncryption (1.2.840.113549.1.1.1) + NULL params
+  const algorithm = [
+    0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01,
+    0x01, 0x05, 0x00,
+  ];
+  const octet = [0x04, ...derLength(pkcs1.length)];
+  const bodyLength =
+    version.length + algorithm.length + octet.length + pkcs1.length;
+  const out = new Uint8Array(1 + derLength(bodyLength).length + bodyLength);
+  let i = 0;
+  out[i++] = 0x30;
+  for (const b of derLength(bodyLength)) out[i++] = b;
+  for (const b of version) out[i++] = b;
+  for (const b of algorithm) out[i++] = b;
+  for (const b of octet) out[i++] = b;
+  out.set(pkcs1, i);
+  return out;
+}
+
+export function pemBody(pem: string): { der: Uint8Array; pkcs1: boolean } {
+  const trimmed = (pem || "").trim();
+  // Insist on the markers. Without them the replaces below match nothing and
+  // any base64-shaped string survives to atob(), producing a junk key that
+  // fails much later inside WebCrypto with an opaque error.
+  if (!/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(trimmed)) {
+    throw new GitHubError(
+      "GITHUB_APP_PRIVATE_KEY is empty or not a PEM",
+      500,
+      null,
+    );
+  }
+  const pkcs1 = trimmed.includes("BEGIN RSA PRIVATE KEY");
+  const base64 = trimmed
+    .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----/, "")
+    .replace(/-----END [A-Z ]*PRIVATE KEY-----/, "")
+    .replace(/\s+/g, "");
+  if (!base64)
+    throw new GitHubError(
+      "GITHUB_APP_PRIVATE_KEY is empty or not a PEM",
+      500,
+      null,
+    );
+  const bin = atob(base64);
+  const der = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) der[i] = bin.charCodeAt(i);
+  return { der, pkcs1 };
+}
+
+let signingKey: CryptoKey | null = null;
+
+async function getSigningKey(env: Env): Promise<CryptoKey> {
+  if (signingKey) return signingKey;
+  if (!env.GITHUB_APP_PRIVATE_KEY) {
+    throw new GitHubError("GITHUB_APP_PRIVATE_KEY is not set", 500, null);
+  }
+  const { der, pkcs1 } = pemBody(env.GITHUB_APP_PRIVATE_KEY);
+  const pkcs8 = pkcs1 ? pkcs1ToPkcs8(der) : der;
+  signingKey = await crypto.subtle.importKey(
+    "pkcs8",
+    pkcs8 as unknown as ArrayBuffer,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  return signingKey;
+}
+
+/**
+ * Mint an App JWT. `iat` is backdated 60s because GitHub rejects a token
+ * whose `iat` is in the future relative to its own clock, and a Worker's
+ * clock can be marginally ahead. Ten-minute maximum life; nine is polite.
+ */
+async function appJwt(env: Env): Promise<string> {
+  const appId = (env.GITHUB_APP_ID || "").trim();
+  if (!appId) throw new GitHubError("GITHUB_APP_ID is not set", 500, null);
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: "RS256", typ: "JWT" };
+  const payload = { iat: now - 60, exp: now + 540, iss: appId };
+  const enc = new TextEncoder();
+  const unsigned = `${b64url(enc.encode(JSON.stringify(header)))}.${b64url(
+    enc.encode(JSON.stringify(payload)),
+  )}`;
+  const key = await getSigningKey(env);
+  const sig = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    key,
+    enc.encode(unsigned),
+  );
+  return `${unsigned}.${b64url(new Uint8Array(sig))}`;
+}
+
+// ---------------------------------------------------------------------------
+// Installation tokens, scoped down
+// ---------------------------------------------------------------------------
+
+interface CachedToken {
+  token: string;
+  expiresAt: number;
+}
+
+// Per-isolate cache keyed by owner/repo. Isolates are ephemeral, so this only
+// saves round-trips within one; it is not a durable store.
+const tokenCache = new Map<string, CachedToken>();
+
+function requestedPermissions(env: Env): Record<string, string> {
+  const spec = env.GITHUB_TOKEN_PERMISSIONS || DEFAULT_PERMISSIONS;
+  const out: Record<string, string> = {};
+  for (const pair of splitCsv(spec)) {
+    const [name, level] = pair.split(":").map((s) => s.trim());
+    if (name && level) out[name] = level;
+  }
+  return out;
+}
+
+async function githubJson(
+  url: string,
+  init: RequestInit,
+  context: string,
+): Promise<{ status: number; body: unknown }> {
+  const res = await fetch(url, {
+    ...init,
+    headers: {
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "User-Agent": "nyuchi-github-mcp",
+      ...(init.headers || {}),
+    },
+  });
+  const text = await res.text();
+  let body: unknown = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = text;
+  }
+  if (!res.ok) {
+    const message =
+      body && typeof body === "object" && "message" in body
+        ? String((body as { message: unknown }).message)
+        : `HTTP ${res.status}`;
+    throw new GitHubError(`${context}: ${message}`, res.status, body);
+  }
+  return { status: res.status, body };
+}
+
+/**
+ * Get an installation token scoped to one repository and a reduced
+ * permission set.
+ *
+ * If the App does not hold a permission requested here, GitHub answers 422
+ * rather than silently granting less — the error is surfaced verbatim so a
+ * missing App permission is diagnosable rather than mysterious. The release
+ * App, for instance, holds no Issues permission today, so issue tools fail
+ * with a 422 naming it until Issues: read/write is added to the App.
+ */
+async function installationToken(
+  env: Env,
+  owner: string,
+  name: string,
+): Promise<string> {
+  const cacheKey = `${owner}/${name}`.toLowerCase();
+  const cached = tokenCache.get(cacheKey);
+  if (cached && cached.expiresAt - 60_000 > Date.now()) return cached.token;
+
+  const jwt = await appJwt(env);
+  const auth = { Authorization: `Bearer ${jwt}` };
+
+  const { body: install } = await githubJson(
+    `${api(env)}/repos/${owner}/${name}/installation`,
+    { headers: auth },
+    `resolving the App installation on ${owner}/${name}`,
+  );
+  const installationId = (install as { id?: number }).id;
+  if (!installationId) {
+    throw new GitHubError(
+      `no installation id returned for ${owner}/${name}`,
+      502,
+      install,
+    );
+  }
+
+  const { body: minted } = await githubJson(
+    `${api(env)}/app/installations/${installationId}/access_tokens`,
+    {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        repositories: [name],
+        permissions: requestedPermissions(env),
+      }),
+    },
+    `minting a scoped installation token for ${owner}/${name}`,
+  );
+
+  const { token, expires_at } = minted as {
+    token?: string;
+    expires_at?: string;
+  };
+  if (!token)
+    throw new GitHubError(
+      "no token in installation token response",
+      502,
+      minted,
+    );
+  tokenCache.set(cacheKey, {
+    token,
+    expiresAt: expires_at ? Date.parse(expires_at) : Date.now() + 30 * 60_000,
+  });
+  return token;
+}
+
+/** Authenticated REST call against an allowlisted repository. */
+async function repoApi(
+  env: Env,
+  repo: string,
+  path: string,
+  init: RequestInit = {},
+  accept?: string,
+): Promise<unknown> {
+  const { owner, name } = resolveRepo(env, repo);
+  const token = await installationToken(env, owner, name);
+  const url = `${api(env)}/repos/${owner}/${name}${path}`;
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    ...((init.headers as Record<string, string>) || {}),
+  };
+  if (accept) headers.Accept = accept;
+  if (init.body) headers["Content-Type"] = "application/json";
+  const { body } = await githubJson(
+    url,
+    { ...init, headers },
+    `${init.method || "GET"} ${path}`,
+  );
+  return body;
+}
+
+/** Raw-text REST call (diffs and patches are not JSON). */
+async function repoText(
+  env: Env,
+  repo: string,
+  path: string,
+  accept: string,
+): Promise<string> {
+  const { owner, name } = resolveRepo(env, repo);
+  const token = await installationToken(env, owner, name);
+  const res = await fetch(`${api(env)}/repos/${owner}/${name}${path}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: accept,
+      "X-GitHub-Api-Version": "2022-11-28",
+      "User-Agent": "nyuchi-github-mcp",
+    },
+  });
+  const text = await res.text();
+  if (!res.ok)
+    throw new GitHubError(`GET ${path}: HTTP ${res.status}`, res.status, text);
+  return text;
+}
+
+// ---------------------------------------------------------------------------
+// Operations — plain functions, so the webhook-driven layer (M2) calls the
+// same code the MCP tools do rather than reimplementing it.
+// ---------------------------------------------------------------------------
+
+export async function whoami(env: Env): Promise<unknown> {
+  const jwt = await appJwt(env);
+  const { body: app } = await githubJson(
+    `${api(env)}/app`,
+    { headers: { Authorization: `Bearer ${jwt}` } },
+    "reading the authenticated App",
+  );
+  const a = app as {
+    slug?: string;
+    name?: string;
+    permissions?: Record<string, string>;
+  };
+  const allowed = splitCsv(env.GITHUB_ALLOWED_REPOS);
+  const requested = requestedPermissions(env);
+
+  // Surface the gap between what the App holds and what tools ask for, so a
+  // missing App permission is visible here rather than as a 422 mid-task.
+  const held = a.permissions || {};
+  const missing = Object.keys(requested).filter((p) => !(p in held));
+
+  return {
+    app: { slug: a.slug, name: a.name },
+    app_permissions: held,
+    token_permissions_requested: requested,
+    permissions_missing_from_app: missing,
+    allowlisted_repositories: allowed,
+    note:
+      missing.length > 0
+        ? `The App does not hold: ${missing.join(", ")}. Tools needing those will fail with 422 until the permission is added to the App and the installation re-authorised.`
+        : "Every requested token permission is held by the App.",
+  };
+}
+
+export function listPullRequests(
+  env: Env,
+  repo: string,
+  state: string,
+  limit: number,
+): Promise<unknown> {
+  const q = new URLSearchParams({
+    state,
+    per_page: String(limit),
+    sort: "updated",
+    direction: "desc",
+  });
+  return repoApi(env, repo, `/pulls?${q}`);
+}
+
+export async function getPullRequest(
+  env: Env,
+  repo: string,
+  number: number,
+): Promise<unknown> {
+  const pr = (await repoApi(env, repo, `/pulls/${number}`)) as Record<
+    string,
+    unknown
+  >;
+  const head = (pr.head as { sha?: string } | undefined)?.sha;
+  const [files, checks] = await Promise.all([
+    repoApi(env, repo, `/pulls/${number}/files?per_page=100`),
+    head
+      ? repoApi(env, repo, `/commits/${head}/check-runs`).catch(() => null)
+      : Promise.resolve(null),
+  ]);
+  const runs =
+    (checks as { check_runs?: Array<Record<string, unknown>> } | null)
+      ?.check_runs || [];
+  return {
+    number: pr.number,
+    title: pr.title,
+    state: pr.state,
+    draft: pr.draft,
+    author: (pr.user as { login?: string } | undefined)?.login,
+    base: (pr.base as { ref?: string } | undefined)?.ref,
+    head: (pr.head as { ref?: string } | undefined)?.ref,
+    head_sha: head,
+    mergeable: pr.mergeable,
+    mergeable_state: pr.mergeable_state,
+    additions: pr.additions,
+    deletions: pr.deletions,
+    changed_files: pr.changed_files,
+    body: pr.body,
+    files: (files as Array<Record<string, unknown>>).map((f) => ({
+      filename: f.filename,
+      status: f.status,
+      additions: f.additions,
+      deletions: f.deletions,
+    })),
+    checks: {
+      total: runs.length,
+      failing: runs
+        .filter(
+          (c) =>
+            c.status === "completed" &&
+            !["success", "skipped", "neutral"].includes(String(c.conclusion)),
+        )
+        .map((c) => c.name),
+      pending: runs.filter((c) => c.status !== "completed").map((c) => c.name),
+    },
+  };
+}
+
+export function getPullRequestDiff(
+  env: Env,
+  repo: string,
+  number: number,
+): Promise<string> {
+  return repoText(
+    env,
+    repo,
+    `/pulls/${number}`,
+    "application/vnd.github.v3.diff",
+  );
+}
+
+export function listIssues(
+  env: Env,
+  repo: string,
+  state: string,
+  limit: number,
+): Promise<unknown> {
+  const q = new URLSearchParams({
+    state,
+    per_page: String(limit),
+    sort: "updated",
+    direction: "desc",
+  });
+  return repoApi(env, repo, `/issues?${q}`);
+}
+
+export function getIssue(
+  env: Env,
+  repo: string,
+  number: number,
+): Promise<unknown> {
+  return repoApi(env, repo, `/issues/${number}`);
+}
+
+export function createPullRequest(
+  env: Env,
+  repo: string,
+  args: {
+    title: string;
+    head: string;
+    base: string;
+    body?: string;
+    draft?: boolean;
+  },
+): Promise<unknown> {
+  return repoApi(env, repo, "/pulls", {
+    method: "POST",
+    // Draft unless explicitly told otherwise: a PR this agent opens should
+    // not start demanding review attention on its own.
+    body: JSON.stringify({ ...args, draft: args.draft !== false }),
+  });
+}
+
+export function updatePullRequest(
+  env: Env,
+  repo: string,
+  number: number,
+  patch: Record<string, unknown>,
+): Promise<unknown> {
+  return repoApi(env, repo, `/pulls/${number}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+/**
+ * Submit a review. APPROVE is refused, deliberately and permanently.
+ *
+ * An agent that can approve can satisfy a repository's own review requirement
+ * and let code reach a protected branch with no human having read it. Review
+ * is where a person is supposed to stand; an automated approval removes the
+ * person while leaving the ritual. COMMENT and REQUEST_CHANGES carry every
+ * finding a review needs to carry, and neither one unblocks a merge.
+ */
+// `async` rather than a plain function returning a promise: the guards below
+// throw before any await, and a synchronous throw from a Promise-typed
+// function is an uncaught exception for any caller using .catch().
+export async function createReview(
+  env: Env,
+  repo: string,
+  number: number,
+  args: {
+    event: "COMMENT" | "REQUEST_CHANGES";
+    body: string;
+    comments?: Array<{ path: string; line: number; body: string }>;
+  },
+): Promise<unknown> {
+  const event = String(args.event).toUpperCase();
+  if (event === "APPROVE") {
+    throw new GitHubError(
+      "this server does not approve pull requests; use COMMENT or REQUEST_CHANGES",
+      403,
+      null,
+    );
+  }
+  if (event !== "COMMENT" && event !== "REQUEST_CHANGES") {
+    throw new GitHubError(
+      `unsupported review event "${args.event}"`,
+      400,
+      null,
+    );
+  }
+  return repoApi(env, repo, `/pulls/${number}/reviews`, {
+    method: "POST",
+    body: JSON.stringify({
+      event,
+      body: args.body,
+      comments: args.comments || [],
+    }),
+  });
+}
+
+export function createComment(
+  env: Env,
+  repo: string,
+  number: number,
+  body: string,
+): Promise<unknown> {
+  // Issues and PRs share the issue-comments endpoint.
+  return repoApi(env, repo, `/issues/${number}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ body }),
+  });
+}
+
+export function createIssue(
+  env: Env,
+  repo: string,
+  args: {
+    title: string;
+    body?: string;
+    labels?: string[];
+    assignees?: string[];
+  },
+): Promise<unknown> {
+  return repoApi(env, repo, "/issues", {
+    method: "POST",
+    body: JSON.stringify(args),
+  });
+}
+
+export function updateIssue(
+  env: Env,
+  repo: string,
+  number: number,
+  patch: Record<string, unknown>,
+): Promise<unknown> {
+  return repoApi(env, repo, `/issues/${number}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}

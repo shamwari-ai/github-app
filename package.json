@@ -1,0 +1,19 @@
+{
+  "name": "nyuchi-github-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cloudflare Worker MCP server for GitHub review, pull request and issue operations",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260721.1",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.124.0"
+  }
+}
