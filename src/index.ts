@@ -55,6 +55,27 @@ function rpcError(
   );
 }
 
+/**
+ * A 5xx that does not hand the caller an exception message.
+ *
+ * An unexpected error's message can carry internal paths, stack frames, or
+ * upstream detail the caller has no business seeing — CodeQL flags exactly
+ * this as "information exposure through a stack trace". GitHubError messages
+ * are constructed in this codebase from GitHub's own API response and are
+ * meant to be actionable, so they are returned; anything else is logged in
+ * full and answered generically.
+ */
+export function internalError(id: unknown, e: unknown): Response {
+  if (e instanceof GitHubError) {
+    return rpcError(id, -32603, e.message, 502);
+  }
+  console.error(
+    "unhandled error:",
+    e instanceof Error ? (e.stack ?? e.message) : String(e),
+  );
+  return rpcError(id, -32603, "internal error", 500);
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -168,9 +189,7 @@ export default {
         ).filter((r): r is object => r !== null);
         return json(responses);
       } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        const status = e instanceof GitHubError ? 502 : 500;
-        return rpcError(null, -32603, message, status);
+        return internalError(null, e);
       }
     }
 
@@ -215,12 +234,7 @@ export default {
       }
       return json(response);
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      const status = e instanceof GitHubError ? 502 : 500;
-      return json(
-        { jsonrpc: "2.0", id: null, error: { code: -32603, message } },
-        status,
-      );
+      return internalError(body.id, e);
     }
   },
 };

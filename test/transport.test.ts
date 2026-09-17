@@ -248,3 +248,30 @@ test("no bearer token is still 401, whatever the era", async () => {
   const res = await worker.fetch(req, env());
   assert.equal(res.status, 401);
 });
+
+// --- error responses do not leak internals --------------------------------
+
+test("an unexpected error is logged, not returned", async () => {
+  // CodeQL: "information exposure through a stack trace". An arbitrary
+  // exception's message can carry internal paths or upstream detail; only
+  // GitHubError messages are written here deliberately for the caller.
+  const { internalError } = await import("../src/index");
+  const boom = new Error("ENOENT: /srv/secret/config.json line 42");
+  const res = internalError(1, boom);
+  const body = (await res.json()) as { error: { message: string } };
+  assert.equal(res.status, 500);
+  assert.equal(body.error.message, "internal error");
+  assert.doesNotMatch(body.error.message, /ENOENT|secret|config\.json/);
+});
+
+test("a GitHubError message is returned, because it is written for the caller", async () => {
+  const { internalError } = await import("../src/index");
+  const { GitHubError } = await import("../src/github");
+  const res = internalError(
+    1,
+    new GitHubError("repo not allowlisted", 403, null),
+  );
+  const body = (await res.json()) as { error: { message: string } };
+  assert.equal(res.status, 502);
+  assert.equal(body.error.message, "repo not allowlisted");
+});
