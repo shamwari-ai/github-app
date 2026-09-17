@@ -265,6 +265,57 @@ async function githubJson(
  * App, for instance, holds no Issues permission today, so issue tools fail
  * with a 422 naming it until Issues: read/write is added to the App.
  */
+/**
+ * Which requested permissions an installation does not satisfy, as
+ * "name:level" strings.
+ *
+ * `write` satisfies a `read` request; `read` does not satisfy `write`. Getting
+ * that backwards would either hide a real gap or report a false one, and the
+ * whole point of this report is to be trusted when a 422 shows up.
+ */
+export function missingPermissions(
+  requested: Record<string, string>,
+  granted: Record<string, string>,
+): string[] {
+  return Object.entries(requested)
+    .filter(([perm, level]) => {
+      const held = granted[perm];
+      if (!held) return true;
+      if (level === "write") return held !== "write";
+      return false;
+    })
+    .map(([perm, level]) => `${perm}:${level}`);
+}
+
+interface Installation {
+  id?: number;
+  /**
+   * What the installation ACTUALLY grants — which is not the same as what the
+   * App declares. Adding a permission to an App puts the installation into
+   * "pending review" until an owner accepts it; until then the App advertises
+   * the permission and the installation withholds it. Reading it from here is
+   * the only way to tell those two states apart.
+   */
+  permissions?: Record<string, string>;
+  repository_selection?: string;
+  account?: { login?: string };
+}
+
+async function installationFor(
+  env: Env,
+  owner: string,
+  name: string,
+  jwt?: string,
+): Promise<Installation> {
+  const token = jwt ?? (await appJwt(env));
+  const { body } = await githubJson(
+    `${api(env)}/repos/${owner}/${name}/installation`,
+    { headers: { Authorization: `Bearer ${token}` } },
+    `resolving the App installation on ${owner}/${name}`,
+  );
+  return body as Installation;
+}
+
 async function installationToken(
   env: Env,
   owner: string,
@@ -277,12 +328,8 @@ async function installationToken(
   const jwt = await appJwt(env);
   const auth = { Authorization: `Bearer ${jwt}` };
 
-  const { body: install } = await githubJson(
-    `${api(env)}/repos/${owner}/${name}/installation`,
-    { headers: auth },
-    `resolving the App installation on ${owner}/${name}`,
-  );
-  const installationId = (install as { id?: number }).id;
+  const install = await installationFor(env, owner, name, jwt);
+  const installationId = install.id;
   if (!installationId) {
     throw new GitHubError(
       `no installation id returned for ${owner}/${name}`,
@@ -386,24 +433,66 @@ export async function whoami(env: Env): Promise<unknown> {
     name?: string;
     permissions?: Record<string, string>;
   };
-  const allowed = splitCsv(env.GITHUB_ALLOWED_REPOS);
+  const declared = a.permissions || {};
   const requested = requestedPermissions(env);
+  const allowed = splitCsv(env.GITHUB_ALLOWED_REPOS);
 
-  // Surface the gap between what the App holds and what tools ask for, so a
-  // missing App permission is visible here rather than as a 422 mid-task.
-  const held = a.permissions || {};
-  const missing = Object.keys(requested).filter((p) => !(p in held));
+  // Probe every allowlisted repository rather than reporting the App alone.
+  // A token mint asks for the WHOLE permission set in one call, so one missing
+  // permission fails every tool, not just the ones that need it — and the App
+  // declaring a permission does not mean the installation has accepted it.
+  // Checking here turns "everything returns 422" into a named cause.
+  const repositories = await Promise.all(
+    allowed.map(async (slug) => {
+      const [owner, name] = slug.split("/");
+      if (!owner || !name) {
+        return {
+          repo: slug,
+          ok: false,
+          error: "malformed, expected owner/repo",
+        };
+      }
+      try {
+        const install = await installationFor(env, owner, name, jwt);
+        const granted = install.permissions || {};
+        const missing = missingPermissions(requested, granted);
+        return {
+          repo: slug,
+          installed: true,
+          installation_id: install.id,
+          repository_selection: install.repository_selection,
+          granted,
+          missing,
+          ok: missing.length === 0,
+        };
+      } catch (e) {
+        const status = e instanceof GitHubError ? e.status : 0;
+        return {
+          repo: slug,
+          installed: false,
+          ok: false,
+          error:
+            status === 404
+              ? "the App is not installed on this repository (or the installation does not include it)"
+              : e instanceof Error
+                ? e.message
+                : String(e),
+        };
+      }
+    }),
+  );
 
+  const broken = repositories.filter((r) => !r.ok);
   return {
     app: { slug: a.slug, name: a.name },
-    app_permissions: held,
+    app_declared_permissions: declared,
     token_permissions_requested: requested,
-    permissions_missing_from_app: missing,
-    allowlisted_repositories: allowed,
+    repositories,
+    ready: broken.length === 0,
     note:
-      missing.length > 0
-        ? `The App does not hold: ${missing.join(", ")}. Tools needing those will fail with 422 until the permission is added to the App and the installation re-authorised.`
-        : "Every requested token permission is held by the App.",
+      broken.length === 0
+        ? "Every allowlisted repository has an installation granting the permissions the scoped token asks for."
+        : `Not ready: ${broken.map((r) => r.repo).join(", ")}. A token mint requests the whole permission set at once, so any gap here fails EVERY tool on that repository, not only the ones needing the missing permission. Note that adding a permission to the App leaves the installation pending an owner's approval — "granted" above is what the installation actually holds, which is what matters.`,
   };
 }
 
