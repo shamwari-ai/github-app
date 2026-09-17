@@ -10,6 +10,7 @@
 // for — so a merge tool could not work here even if one existed.
 
 import type { Env } from "./env";
+import { reviewPullRequest } from "./review";
 import {
   LEGACY_VERSION,
   META_SERVER_INFO,
@@ -426,6 +427,52 @@ export const TOOLS: Tool[] = [
         num(a.number, "number"),
         str(a.body, "body"),
       ),
+  },
+  {
+    name: "nyuchi_review_pull_request",
+    // CREATE rather than READ because this tool CAN post. It defaults to a
+    // dry run, but an annotation describes what a tool may do, not what it
+    // usually does — a client deciding whether to confirm needs the ceiling.
+    annotations: CREATE,
+    description:
+      "Review a pull request with a model running on Workers AI and return the findings, each anchored to a line the diff adds. DRY RUN by default: nothing is posted unless post is true, so the same call can compare two models on one pull request without either writing to it. Cannot approve — it submits through the same path that refuses APPROVE. Findings are returned most serious first and capped; anything the model aimed at a line the diff does not add is returned separately under unanchored rather than dropped.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repo: REPO_PROP,
+        number: { type: "number" },
+        model: {
+          type: "string",
+          description:
+            'Workers AI model id, e.g. "@cf/zai-org/glm-5.3", "@cf/zai-org/glm-5.3-flash" or "@cf/moonshotai/kimi-k2.7-code". Defaults to REVIEW_MODEL. Pass it explicitly to compare models on the same pull request.',
+        },
+        post: {
+          type: "boolean",
+          description:
+            "Post the review to GitHub. Default false — read the findings first.",
+        },
+        event: {
+          type: "string",
+          enum: ["COMMENT", "REQUEST_CHANGES"],
+          description:
+            "Review event when posting. Default COMMENT. REQUEST_CHANGES leaves a mark a person must dismiss, so pass it only once the reviewer has earned it.",
+        },
+        max_findings: {
+          type: "number",
+          description: "Cap on inline findings. Default 10.",
+        },
+      },
+      required: ["repo", "number"],
+      additionalProperties: false,
+    },
+    handler: (env, a) =>
+      reviewPullRequest(env, str(a.repo, "repo"), num(a.number, "number"), {
+        model: typeof a.model === "string" ? a.model : undefined,
+        post: a.post === true,
+        event: a.event === "REQUEST_CHANGES" ? "REQUEST_CHANGES" : "COMMENT",
+        maxFindings:
+          typeof a.max_findings === "number" ? a.max_findings : undefined,
+      }),
   },
 ];
 
