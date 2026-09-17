@@ -431,6 +431,12 @@ export interface ReviewOptions {
   maxDiffBytes?: number;
   /** Post even if this commit already carries a review. Default false. */
   force?: boolean;
+  /**
+   * What caused this review — "push", "pull_request", "mention:<login>".
+   * Attached to the AI Gateway log, so spend can be read by cause and by
+   * repository rather than estimated.
+   */
+  trigger?: string;
 }
 
 /**
@@ -463,16 +469,24 @@ async function reviewDiff(
     };
   }
 
-  const out = (await env.AI!.run(model, {
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      {
-        role: "user",
-        content: `Repository: ${repo}\n\nAnnotated diff. Lines this change ADDS start with "+" and carry their new-file line number before the "|"; only those are valid finding targets.\n\n${sent}`,
-      },
-    ],
-    response_format: { type: "json_schema", json_schema: FINDINGS_SCHEMA },
-  })) as { response?: unknown };
+  const out = (await env.AI!.run(
+    model,
+    {
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        {
+          role: "user",
+          content: `Repository: ${repo}\n\nAnnotated diff. Lines this change ADDS start with "+" and carry their new-file line number before the "|"; only those are valid finding targets.\n\n${sent}`,
+        },
+      ],
+      response_format: { type: "json_schema", json_schema: FINDINGS_SCHEMA },
+    },
+    // The gateway is the THIRD argument, not a field of the input object —
+    // putting it in the input silently does nothing and the call still
+    // succeeds, so the mistake shows up as a gateway with no traffic rather
+    // than as an error.
+    gatewayOptions(env, repo, opts),
+  )) as { response?: unknown };
 
   const { summary, findings } = parseFindings(out?.response);
   const { anchored, unanchored } = anchor(findings, addedLines);
@@ -484,6 +498,34 @@ async function reviewDiff(
     unanchored,
     truncated,
     posted: false,
+  };
+}
+
+/**
+ * Route inference through an AI Gateway when one is configured.
+ *
+ * Unset means calling Workers AI directly, which works and is what a first
+ * deploy does. Set it and every review is logged with the repository and what
+ * triggered it attached, so "what did this repository cost this month" is a
+ * query rather than an estimate — and caching, retries and rate limiting
+ * arrive as gateway configuration instead of code in this worker.
+ *
+ * skipCache is true because a cached review is a wrong review: the same diff
+ * reviewed twice is a person asking for a second opinion, and handing back
+ * the first one verbatim answers a question nobody asked.
+ */
+function gatewayOptions(
+  env: Env,
+  repo: string,
+  opts: ReviewOptions,
+): Record<string, unknown> | undefined {
+  if (!env.AI_GATEWAY_ID) return undefined;
+  return {
+    gateway: {
+      id: env.AI_GATEWAY_ID,
+      skipCache: true,
+      metadata: { repo, trigger: opts.trigger ?? "manual" },
+    },
   };
 }
 

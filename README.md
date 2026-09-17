@@ -365,6 +365,25 @@ stops if one already carries its marker.
 That state lives where the output lives. No KV namespace to provision, and no
 second record that can drift out of step with the thing it describes.
 
+### Routing through an AI Gateway
+
+`AI_GATEWAY_ID` is unset by default, which calls Workers AI directly. Set it
+and every review is logged with `{ repo, trigger }` metadata attached, where
+`trigger` is `push`, `pull_request` or `mention:<login>`.
+
+That turns "what did this repository cost this month" from an estimate into a
+query — and it is the mechanism per-customer billing would be built on, since
+the same metadata field can carry a customer id.
+
+`skipCache` is set to `true` deliberately. A cached review is a wrong review:
+the same diff reviewed twice is a person asking for a second opinion, and
+handing back the first one verbatim answers a question nobody asked.
+
+> The `gateway` object is the **third argument** to `env.AI.run`, not a field
+> of the input. Putting it in the input silently does nothing and the call
+> still succeeds — the mistake shows up as a gateway with no traffic rather
+> than as an error.
+
 ### Kill switch
 
 `REVIEW_ENABLED = "false"` fails every review closed, before any model call and

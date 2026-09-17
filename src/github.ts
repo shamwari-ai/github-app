@@ -663,6 +663,36 @@ export function getPullRequestDiff(
 }
 
 /**
+ * Just the head sha and draft flag of a pull request.
+ *
+ * The issue_comment payload carries neither — it describes a comment on an
+ * "issue", and a pull request is an issue with extra URLs hanging off it. So
+ * a mention costs one lookup, and this is the cheap one: getPullRequest()
+ * also fetches the file list and a check-run rollup, none of which a review
+ * needs.
+ */
+export async function getPullRequestHead(
+  env: Env,
+  repo: string,
+  number: number,
+): Promise<{ sha: string; draft: boolean; state: string }> {
+  const pr = (await repoApi(env, repo, `/pulls/${number}`)) as Record<
+    string,
+    unknown
+  >;
+  const sha = (pr.head as { sha?: string } | undefined)?.sha;
+  if (!sha) {
+    throw new GitHubError(`${repo}#${number}: no head sha`, 502, null);
+  }
+  return {
+    sha,
+    draft: pr.draft === true,
+    state: typeof pr.state === "string" ? pr.state : "unknown",
+  };
+}
+
+/**
+ * The diff a push introduced, as a unified diff./**
  * The diff a push introduced, as a unified diff.
  *
  * `base` and `head` are the webhook's `before` and `after`. This is what the
