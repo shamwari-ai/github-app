@@ -309,3 +309,40 @@ test("slimIssue flags pull requests returned by the issues endpoint", async () =
   );
   assert.equal(slimIssue({ number: 2 }).is_pull_request, false);
 });
+
+// --- what a failed tool call may say --------------------------------------
+//
+// index.ts stopped returning exception messages on the transport path. The
+// tools/call path returned `e.message` for every throw, which is the same
+// defect one layer up: a TypeError's message names an internal property, a
+// fetch failure names an internal URL. A GitHubError is different — its
+// message is written for the caller and is the only thing that tells them
+// which permission is missing.
+
+test("a GitHubError reaches the caller — it is the actionable one", async () => {
+  const { toolError } = await import("../src/mcp");
+  const { GitHubError } = await import("../src/github");
+  const res = toolError(
+    "nyuchi_get_pull_request",
+    new GitHubError("nyuchi/web-services: App not installed", 404, null),
+  );
+  assert.equal(res.isError, true);
+  assert.match(res.content[0].text, /App not installed/);
+});
+
+test("any other throw does not, however tempting the message", async () => {
+  const { toolError } = await import("../src/mcp");
+  const res = toolError(
+    "nyuchi_get_pull_request",
+    new TypeError("Cannot read properties of undefined (reading 'secret')"),
+  );
+  assert.equal(res.isError, true);
+  assert.doesNotMatch(res.content[0].text, /secret|TypeError|undefined/);
+  assert.match(res.content[0].text, /internal error/);
+});
+
+test("a thrown non-Error is not stringified into the response either", async () => {
+  const { toolError } = await import("../src/mcp");
+  const res = toolError("nyuchi_comment", { token: "ghs_leaked" });
+  assert.doesNotMatch(res.content[0].text, /ghs_/);
+});
