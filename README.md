@@ -100,8 +100,10 @@ npm test          # DER wrapper + policy guards
 npm run dev       # wrangler dev
 ```
 
-Set `GITHUB_APP_ID` in `wrangler.toml` to the release App's numeric App ID,
-then the secrets:
+`GITHUB_APP_ID` is committed in `wrangler.toml` — an App ID is an identifier,
+not a credential, and `wrangler deploy` replaces the deployed `[vars]` block,
+so a value set only in the dashboard is overwritten by the next deploy. The
+private key is the secret:
 
 ```bash
 wrangler secret put GITHUB_APP_PRIVATE_KEY   # the whole .pem, BEGIN/END included
