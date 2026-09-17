@@ -662,6 +662,70 @@ export function getPullRequestDiff(
   );
 }
 
+/**
+ * The diff a push introduced, as a unified diff.
+ *
+ * `base` and `head` are the webhook's `before` and `after`. This is what the
+ * reviewer reads after a commit: what just arrived, not the whole pull
+ * request, which it has already seen.
+ */
+export function compareCommits(
+  env: Env,
+  repo: string,
+  base: string,
+  head: string,
+): Promise<string> {
+  return repoText(
+    env,
+    repo,
+    `/compare/${base}...${head}`,
+    "application/vnd.github.v3.diff",
+  );
+}
+
+/**
+ * Comment on a commit.
+ *
+ * Deliberately NOT a pull request review. A commit comment cannot carry a
+ * review event, so it cannot request changes, cannot approve, and cannot
+ * satisfy or block a branch protection rule — there is no state for a person
+ * to dismiss. The reviewer says its piece and changes nothing.
+ *
+ * `path` and `position` are omitted on purpose. For commit comments GitHub
+ * anchors on `position`, the line index counted down from the first `@@`
+ * header in that file, continuing across hunks and counting removed and
+ * context lines alike — NOT the file line number that pull request review
+ * comments take. Getting that arithmetic wrong puts a confident comment on
+ * unrelated code, so the review goes in one body with each finding naming its
+ * own `path:line` in text. Anyone adding inline anchoring later: that is the
+ * rule you have to implement, and `line` is deprecated for this endpoint.
+ */
+export function createCommitComment(
+  env: Env,
+  repo: string,
+  sha: string,
+  body: string,
+): Promise<unknown> {
+  return repoApi(env, repo, `/commits/${sha}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ body }),
+  });
+}
+
+/** Existing comments on a commit — how the reviewer knows it already ran. */
+export async function listCommitComments(
+  env: Env,
+  repo: string,
+  sha: string,
+): Promise<Array<Record<string, unknown>>> {
+  const rows = (await repoApi(
+    env,
+    repo,
+    `/commits/${sha}/comments?per_page=100`,
+  )) as Array<Record<string, unknown>>;
+  return Array.isArray(rows) ? rows : [];
+}
+
 export async function listIssues(
   env: Env,
   repo: string,
