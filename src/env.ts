@@ -38,6 +38,11 @@ export interface Env {
   MCP_RESOURCE_URL?: string; // this resource's canonical URL
 
   // ---- Review agent (Workers AI) ------------------------------------------
+  // GitHub webhook shared secret. A SECRET, set with `wrangler secret put`.
+  // Unset means /webhook answers 503: an endpoint that runs model calls on
+  // unauthenticated input is an endpoint anyone can bill to this account.
+  GITHUB_WEBHOOK_SECRET?: string;
+
   // The inference binding. Declared optional so every existing test can keep
   // constructing an Env without one; reviewPullRequest() checks for it and
   // says what to add rather than throwing on undefined.

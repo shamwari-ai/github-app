@@ -306,11 +306,17 @@ the model reads:
     14|const e = 6;
 ```
 
-Only `+` lines are valid targets, and the set of them is kept. A finding
-aimed at anything else is returned under `unanchored` and rendered into the
-review body instead of being posted inline — because GitHub rejects the whole
-review call on one bad position, and one invented line number would otherwise
-take every real finding down with it.
+Only `+` lines are valid targets, and the set of them is kept. A finding aimed
+at anything else is collected under `unanchored` and folded into the comment
+separately, so a model pointing at code it cannot see stays visible instead of
+being silently dropped.
+
+> **If you ever add inline anchoring**, note that commit comments anchor on
+> `position` — the line index counted down from the _first_ `@@` header in
+> that file, continuing across hunks, counting context and removed lines
+> alike. That is **not** the file line number pull request review comments
+> take, and `line` is deprecated on that endpoint. One comment per review
+> sidesteps that arithmetic entirely, which is part of why it is one comment.
 
 ### The model output is not trusted
 
@@ -350,15 +356,38 @@ findings is a correct outcome** — the failure mode of an automated reviewer is
 not being wrong, it is being voluminous, and a bot that posts nine nits and
 one real bug has buried the bug.
 
+### Not reviewing the same commit twice
+
+GitHub retries a delivery it believes failed, and re-requesting one is a single
+click. So before posting, the agent reads the commit's existing comments and
+stops if one already carries its marker.
+
+That state lives where the output lives. No KV namespace to provision, and no
+second record that can drift out of step with the thing it describes.
+
 ### Kill switch
 
-`REVIEW_ENABLED = "false"` fails every review closed, before any model call,
-without a code deploy.
+`REVIEW_ENABLED = "false"` fails every review closed, before any model call and
+before any diff is fetched, with no code deploy.
+
+`GITHUB_WEBHOOK_SECRET` unset makes `/webhook` answer `503`. An endpoint that
+runs model calls on unauthenticated input is an endpoint anyone can bill to
+your Cloudflare account.
+
+### What is still missing
+
+`ctx.waitUntil()` runs the review after the webhook has been answered, because
+a model call over a diff takes far longer than the ten seconds GitHub allows.
+It has **no retry and no backpressure**: if the worker is evicted mid-review,
+that review is lost. The failure is visible — the commit simply has no comment
+— and re-requesting the delivery re-runs it. Cloudflare Queues is the upgrade
+once review volume justifies provisioning one.
 
 ## Endpoints
 
 ```
 POST /mcp                                    MCP, requires a WorkOS bearer token
+POST /webhook                                GitHub webhook, HMAC-signed (no bearer)
 GET  /.well-known/oauth-protected-resource   OAuth resource metadata (public)
 GET  /health                                 liveness (public)
 GET|DELETE /mcp                              405 (sessions and GET streams are gone)
@@ -372,6 +401,7 @@ src/protocol.ts era detection, mirrored-header validation, version constants
 src/auth.ts     WorkOS token verification (shared logic with nyuchi-fly-mcp)
 src/github.ts   App JWT, scoped installation tokens, REST operations
 src/review.ts   the review engine: diff annotation, the model call, anchoring
+src/webhook.ts  GitHub webhook ingest, signature check, the draft rule
 src/mcp.ts      tool definitions and JSON-RPC dispatch
 src/index.ts    routing, CORS, auth enforcement
 ```

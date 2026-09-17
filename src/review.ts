@@ -9,12 +9,21 @@
 // and no egress — the inference happens on the same platform as the worker
 // and is billed to the Cloudflare account.
 //
-// What this deliberately does NOT do: approve. It submits through
-// createReview(), which refuses APPROVE before the allowlist is consulted, so
-// the agent inherits that guarantee rather than re-stating it.
+// Output goes to a COMMIT COMMENT, not a pull request review. That is a
+// stronger safety property than the createReview() refusal it replaces: a
+// commit comment carries no review event at all, so this agent cannot
+// approve, cannot request changes, cannot satisfy or block a branch
+// protection rule, and leaves nothing for a person to dismiss. It says its
+// piece and changes nothing.
 
 import type { Env } from "./env";
-import { GitHubError, createReview, getPullRequestDiff } from "./github";
+import {
+  GitHubError,
+  compareCommits,
+  createCommitComment,
+  getPullRequestDiff,
+  listCommitComments,
+} from "./github";
 
 /** Workers AI models known to do function calling and structured output. */
 export const REVIEW_MODELS = {
@@ -60,7 +69,10 @@ export interface ReviewResult {
   unanchored: Finding[];
   truncated: boolean;
   posted: boolean;
-  event?: "COMMENT" | "REQUEST_CHANGES";
+  /** The commit the review was posted on. */
+  sha?: string;
+  /** Why nothing was posted, when posting was asked for. */
+  skipped?: string;
 }
 
 // --- diff annotation ------------------------------------------------------
@@ -326,7 +338,14 @@ export function rank(findings: Finding[]): Finding[] {
   return [...findings].sort((a, b) => RANK[a.severity] - RANK[b.severity]);
 }
 
-/** Render the review body a human reads before the inline comments. */
+/**
+ * The whole review, as one comment.
+ *
+ * One comment rather than one per finding, because commit comments do not
+ * thread and ten of them on one commit is the noise that gets a reviewer
+ * muted. Each finding names its own `path:line` so the reader can still jump
+ * straight to it.
+ */
 export function renderBody(r: {
   model: string;
   summary: string;
@@ -334,65 +353,142 @@ export function renderBody(r: {
   unanchored: Finding[];
   truncated: boolean;
 }): string {
-  const lines = [r.summary.trim() || "No summary returned."];
+  const lines = [
+    REVIEW_MARKER,
+    `### Automated review`,
+    "",
+    r.summary.trim() || "No summary returned.",
+  ];
+
+  if (r.findings.length) {
+    lines.push("");
+    for (const f of r.findings) {
+      lines.push(
+        `**${SEVERITY_LABEL[f.severity]} \`${f.path}:${f.line}\`** — ${f.title}`,
+        "",
+        f.body.trim(),
+        "",
+      );
+    }
+  } else {
+    lines.push("", "No findings.");
+  }
 
   if (r.unanchored.length) {
     lines.push(
       "",
-      "**Not anchored to a changed line** — reported here rather than dropped:",
+      "<details><summary>Not anchored to a line this change adds " +
+        `(${r.unanchored.length})</summary>`,
       "",
       ...r.unanchored.map(
         (f) => `- \`${f.path}:${f.line}\` — ${f.title || f.body}`,
       ),
+      "",
+      "</details>",
     );
   }
   if (r.truncated) {
     lines.push(
       "",
       "> The diff was larger than this reviewer's budget and was truncated. " +
-        "Files after the cut were not read.",
+        "Changes after the cut were not read.",
     );
   }
   lines.push(
     "",
     "---",
     "",
-    `_Automated review · \`${r.model}\` on Workers AI · this reviewer cannot approve._`,
+    `_\`${r.model}\` on Workers AI. A commit comment, not a review: this ` +
+      `cannot approve, request changes, or affect merge state._`,
   );
   return lines.join("\n");
 }
 
+const SEVERITY_LABEL = {
+  blocking: "Blocking",
+  concern: "Concern",
+  note: "Note",
+} as const;
+
 // --- the engine -----------------------------------------------------------
+
+/**
+ * Written into every posted review, and looked for before posting one.
+ *
+ * GitHub retries a webhook delivery it thinks failed, and a re-request is one
+ * click in the UI, so "have I already reviewed this commit?" has to be
+ * answerable. It is answered from the commit's own comments rather than from
+ * KV: the record lives where the output lives, so it cannot drift out of sync
+ * with it, and there is no namespace to provision.
+ */
+export const REVIEW_MARKER = "<!-- nyuchi-review -->";
 
 export interface ReviewOptions {
   model?: string;
   /** Post the review to GitHub. Default false: a dry run is the safe default. */
   post?: boolean;
-  /** Review event when posting. Default COMMENT — see reviewPullRequest. */
-  event?: "COMMENT" | "REQUEST_CHANGES";
   maxFindings?: number;
   maxDiffBytes?: number;
+  /** Post even if this commit already carries a review. Default false. */
+  force?: boolean;
 }
 
 /**
- * Review one pull request.
- *
- * Defaults to a DRY RUN. Posting is opt-in per call because the first thing
- * anyone should do with a new reviewer is read what it would have said, and
- * because it lets the same tool compare two models on the same pull request
- * without either of them writing to it.
- *
- * Defaults to COMMENT even when findings are blocking. REQUEST_CHANGES puts a
- * red mark on the pull request that a person then has to dismiss, so it is
- * something this reviewer should earn on evidence rather than assume on its
- * first day; pass it explicitly once you trust the output.
+ * Review a diff. The part that does not care where the diff came from.
  */
-export async function reviewPullRequest(
+async function reviewDiff(
   env: Env,
   repo: string,
-  number: number,
-  opts: ReviewOptions = {},
+  diff: string,
+  opts: ReviewOptions,
 ): Promise<ReviewResult> {
+  const model = opts.model || env.REVIEW_MODEL || REVIEW_MODELS[DEFAULT_MODEL];
+  const maxDiffBytes =
+    opts.maxDiffBytes ||
+    Number(env.REVIEW_MAX_DIFF_BYTES) ||
+    DEFAULT_MAX_DIFF_BYTES;
+  const maxFindings = opts.maxFindings ?? 10;
+
+  const { text, addedLines } = annotateDiff(diff);
+  const { text: sent, truncated } = truncate(text, maxDiffBytes);
+
+  if (!sent.trim()) {
+    return {
+      model,
+      summary: "Nothing to review — this change has no readable diff.",
+      findings: [],
+      unanchored: [],
+      truncated,
+      posted: false,
+    };
+  }
+
+  const out = (await env.AI!.run(model, {
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT },
+      {
+        role: "user",
+        content: `Repository: ${repo}\n\nAnnotated diff. Lines this change ADDS start with "+" and carry their new-file line number before the "|"; only those are valid finding targets.\n\n${sent}`,
+      },
+    ],
+    response_format: { type: "json_schema", json_schema: FINDINGS_SCHEMA },
+  })) as { response?: unknown };
+
+  const { summary, findings } = parseFindings(out?.response);
+  const { anchored, unanchored } = anchor(findings, addedLines);
+
+  return {
+    model,
+    summary,
+    findings: rank(anchored).slice(0, maxFindings),
+    unanchored,
+    truncated,
+    posted: false,
+  };
+}
+
+/** The guards that must pass before anything is fetched or spent. */
+function assertRunnable(env: Env): void {
   if (env.REVIEW_ENABLED === "false") {
     throw new GitHubError(
       "the review agent is disabled (REVIEW_ENABLED=false)",
@@ -407,66 +503,85 @@ export async function reviewPullRequest(
       null,
     );
   }
+}
 
-  const model = opts.model || env.REVIEW_MODEL || REVIEW_MODELS[DEFAULT_MODEL];
-  const maxDiffBytes =
-    opts.maxDiffBytes ||
-    Number(env.REVIEW_MAX_DIFF_BYTES) ||
-    DEFAULT_MAX_DIFF_BYTES;
-  const maxFindings = opts.maxFindings ?? 10;
+/** True when this commit already carries a review from us. */
+export async function alreadyReviewed(
+  env: Env,
+  repo: string,
+  sha: string,
+): Promise<boolean> {
+  const comments = await listCommitComments(env, repo, sha);
+  return comments.some(
+    (c) => typeof c.body === "string" && c.body.includes(REVIEW_MARKER),
+  );
+}
 
-  const diff = await getPullRequestDiff(env, repo, number);
-  const { text, addedLines } = annotateDiff(diff);
-  const { text: sent, truncated } = truncate(text, maxDiffBytes);
-
-  if (!sent.trim()) {
-    return {
-      model,
-      summary: "The diff is empty — nothing to review.",
-      findings: [],
-      unanchored: [],
-      truncated,
-      posted: false,
-    };
-  }
-
-  const out = (await env.AI.run(model, {
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      {
-        role: "user",
-        content: `Repository: ${repo}\nPull request: #${number}\n\nAnnotated diff. Lines the diff ADDS start with "+" and carry their new-file line number before the "|"; only those are valid finding targets.\n\n${sent}`,
-      },
-    ],
-    response_format: { type: "json_schema", json_schema: FINDINGS_SCHEMA },
-  })) as { response?: unknown };
-
-  const { summary, findings } = parseFindings(out?.response);
-  const { anchored, unanchored } = anchor(findings, addedLines);
-  const kept = rank(anchored).slice(0, maxFindings);
-
-  const result: ReviewResult = {
-    model,
-    summary,
-    findings: kept,
-    unanchored,
-    truncated,
-    posted: false,
-  };
-
+async function post(
+  env: Env,
+  repo: string,
+  sha: string,
+  result: ReviewResult,
+  opts: ReviewOptions,
+): Promise<ReviewResult> {
   if (!opts.post) return result;
+  if (!opts.force && (await alreadyReviewed(env, repo, sha))) {
+    return { ...result, posted: false, skipped: "already reviewed" };
+  }
+  await createCommitComment(env, repo, sha, renderBody(result));
+  return { ...result, posted: true, sha };
+}
 
-  const event =
-    opts.event === "REQUEST_CHANGES" ? "REQUEST_CHANGES" : "COMMENT";
-  await createReview(env, repo, number, {
-    event,
-    body: renderBody(result),
-    comments: kept.map((f) => ({
-      path: f.path,
-      line: f.line,
-      body: `**${f.severity}** — ${f.title}\n\n${f.body}`,
-    })),
-  });
+/**
+ * Review the commits a push introduced, and comment on the new head.
+ *
+ * `before` and `after` come from the pull_request webhook's `synchronize`
+ * payload, so the model reads what just arrived rather than the whole pull
+ * request it has already seen. A force-push can leave `before` unreachable
+ * from `after`; the compare then fails and the caller falls back to the full
+ * pull request diff, which is correct if wasteful.
+ */
+export async function reviewPush(
+  env: Env,
+  repo: string,
+  before: string,
+  after: string,
+  opts: ReviewOptions = {},
+): Promise<ReviewResult> {
+  assertRunnable(env);
+  const diff = await compareCommits(env, repo, before, after);
+  const result = await reviewDiff(env, repo, diff, opts);
+  return post(env, repo, after, result, opts);
+}
 
-  return { ...result, posted: true, event };
+/**
+ * Review a whole pull request, and comment on its head commit.
+ *
+ * This is the catch-up path as much as the on-demand one: because drafts are
+ * skipped, everything pushed while a pull request was a draft has never been
+ * read, so `ready_for_review` reviews the lot rather than only the last push.
+ *
+ * Defaults to a DRY RUN. The first thing to do with a new reviewer is read
+ * what it would have said, and a dry run lets two models run over the same
+ * pull request without either writing to it.
+ */
+export async function reviewPullRequest(
+  env: Env,
+  repo: string,
+  number: number,
+  opts: ReviewOptions = {},
+  headSha?: string,
+): Promise<ReviewResult> {
+  assertRunnable(env);
+  const diff = await getPullRequestDiff(env, repo, number);
+  const result = await reviewDiff(env, repo, diff, opts);
+  if (!opts.post) return result;
+  if (!headSha) {
+    throw new GitHubError(
+      "cannot post a review without the head commit sha",
+      400,
+      null,
+    );
+  }
+  return post(env, repo, headSha, result, opts);
 }
