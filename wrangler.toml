@@ -1,0 +1,74 @@
+name = "nyuchi-github-mcp"
+main = "src/index.ts"
+compatibility_date = "2025-06-01"
+
+# Nyuchi's Cloudflare account (the same one hosting nyuchi-fly-mcp and the
+# docs workers).
+account_id = "125a2dfbc21f76a25c980609609e8218"
+
+workers_dev = true
+
+# Custom domain on the nyuchi.dev zone, matching fly.nyuchi.dev. Wrangler
+# provisions the cert and DNS record for the hostname on deploy.
+routes = [{ pattern = "github.nyuchi.dev", custom_domain = true }]
+
+# Stable, non-secret defaults. The private key is a SECRET (see below); every
+# value here is public policy, versioned so a change to what the agent may
+# touch shows up in a diff.
+[vars]
+GITHUB_API = "https://api.github.com"
+
+# The App ID. This is the SAME App that mints release tokens
+# (RELEASE_APP_ID), reused by explicit decision. The App holds Contents,
+# Pull requests and Workflows read/write; the two settings below are what
+# stop the agent inheriting all of that.
+GITHUB_APP_ID = "REPLACE_WITH_RELEASE_APP_ID"
+
+# OUTER BOUND — repositories this worker will touch at all. Checked before a
+# token is minted, so a repo outside this list never reaches GitHub. An empty
+# or missing value denies every repository: a misconfigured worker should be
+# useless rather than open.
+GITHUB_ALLOWED_REPOS = "nyuchi/web-services,nyuchi/api-gateway,nyuchi/mukoko-platform"
+
+# INNER BOUND — the permission set each installation token asks for. A token
+# may request a SUBSET of what the App holds, never a superset, so this is
+# what narrows a release-capable App down to a review-capable agent.
+#
+# `workflows` is absent deliberately: the App can push workflow files, this
+# worker cannot. `contents` is read, not write, which is also what makes a
+# merge tool impossible here rather than merely absent.
+#
+# NOTE: the release App does NOT currently hold an Issues permission, so
+# `issues:write` will fail with 422 until Issues: read/write is added to the
+# App and the installation re-authorised. `github_whoami` reports the gap.
+GITHUB_TOKEN_PERMISSIONS = "pull_requests:write,issues:write,contents:read,metadata:read"
+
+# The WorkOS AuthKit issuer — the OAuth 2.1 authorization server MCP clients
+# discover from our resource metadata and run their PKCE flow against. Same
+# host nyuchi-fly-mcp uses; see that file for why the three sibling hosts
+# (auth.mukoko.com, api.nyuchi.com, api.mukoko.com) are NOT this.
+WORKOS_AUTHORIZATION_SERVER = "https://accounts.mukoko.com"
+MCP_RESOURCE_URL = "https://github.nyuchi.dev/mcp"
+
+# Authorization policy (public, versioned for auditability).
+# Org gate: Nyuchi Africa members only — blocks every other WorkOS org.
+WORKOS_ORG_ID = "org_01KRDAB894DJF5V38PT5617TV1"
+# Platform gate: the caller must hold the Platform Team role OR its
+# mongodb:access permission (third-party app tokens surface permissions
+# rather than the role).
+WORKOS_REQUIRED_ROLES = "platform-team"
+WORKOS_REQUIRED_PERMISSIONS = "mongodb:access"
+
+# Secrets — set with `wrangler secret put <NAME>` or in the Cloudflare
+# dashboard (Workers -> nyuchi-github-mcp -> Settings -> Variables and Secrets):
+#
+#   GITHUB_APP_PRIVATE_KEY  The App's .pem, whole file including the BEGIN/END
+#                           lines. PKCS#1 ("BEGIN RSA PRIVATE KEY", what
+#                           GitHub hands you) or PKCS#8 both work — the worker
+#                           wraps PKCS#1 itself, so this is byte-identical to
+#                           RELEASE_APP_PRIVATE_KEY with no conversion.
+#   WORKOS_JWKS_URL         WorkOS Connect JWKS endpoint
+#                           (https://api.workos.com/sso/jwks/<client_id>)
+#   WORKOS_ISSUER           expected `iss` claim (leave unset to keep /mcp
+#                           locked until it is configured)
+#   WORKOS_AUDIENCE         expected `aud` claim(s), comma-separated
