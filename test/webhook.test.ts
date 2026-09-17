@@ -7,7 +7,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decide, verifySignature } from "../src/webhook";
+import { decide, mentions, verifySignature } from "../src/webhook";
 
 const pr = (over: Record<string, unknown> = {}) => ({
   action: "synchronize",
@@ -226,4 +226,151 @@ test("an unset secret never verifies, whatever is presented", async () => {
     await verifySignature("", body, await sign(SECRET, body)),
     false,
   );
+});
+
+// --- summoning by mention -------------------------------------------------
+//
+// issue_comment introduces a loop that did not exist before. A commit comment
+// raises no pull_request event, so the agent could not previously trigger
+// itself. The moment it — or any bot — writes its own handle in a comment, it
+// can. That is what the Bot guard is for, and it is the test to break first.
+
+const comment = (over: Record<string, unknown> = {}) => ({
+  action: "created",
+  repository: { full_name: "nyuchi/web-services" },
+  issue: {
+    number: 42,
+    state: "open",
+    pull_request: { url: "https://api.github.com/…/pulls/42" },
+  },
+  comment: {
+    body: "@shamwari please take a look",
+    author_association: "OWNER",
+    user: { login: "bryan", type: "User" },
+  },
+  ...over,
+});
+
+test("a mention from a maintainer summons a review", () => {
+  const d = decide("issue_comment", comment());
+  assert.equal(d.run, "mention");
+  if (d.run === "mention") {
+    assert.equal(d.repo, "nyuchi/web-services");
+    assert.equal(d.number, 42);
+    assert.equal(d.by, "bryan");
+  }
+});
+
+test("a bot's comment NEVER summons a review, even saying the handle", () => {
+  // The loop. If this test goes green while the guard is gone, the agent can
+  // summon itself indefinitely and bill every cycle.
+  const d = decide(
+    "issue_comment",
+    comment({
+      comment: {
+        body: "@shamwari reviewed this commit",
+        author_association: "OWNER",
+        user: { login: "shamwari[bot]", type: "Bot" },
+      },
+    }),
+  );
+  assert.equal(d.run, "skip");
+  assert.match(d.run === "skip" ? d.reason : "", /bot/i);
+});
+
+test("a commenter without write access cannot spend a review", () => {
+  for (const author_association of ["NONE", "CONTRIBUTOR", "FIRST_TIMER"]) {
+    const d = decide(
+      "issue_comment",
+      comment({
+        comment: {
+          body: "@shamwari review please",
+          author_association,
+          user: { login: "stranger", type: "User" },
+        },
+      }),
+    );
+    assert.equal(d.run, "skip", author_association);
+  }
+});
+
+test("OWNER, MEMBER and COLLABORATOR all may", () => {
+  for (const author_association of ["OWNER", "MEMBER", "COLLABORATOR"]) {
+    const d = decide(
+      "issue_comment",
+      comment({
+        comment: {
+          body: "@shamwari",
+          author_association,
+          user: { login: "someone", type: "User" },
+        },
+      }),
+    );
+    assert.equal(d.run, "mention", author_association);
+  }
+});
+
+test("a comment without the handle is ignored", () => {
+  const d = decide(
+    "issue_comment",
+    comment({
+      comment: {
+        body: "looks good to me",
+        author_association: "OWNER",
+        user: { login: "bryan", type: "User" },
+      },
+    }),
+  );
+  assert.equal(d.run, "skip");
+});
+
+test("a comment on an issue is not a pull request review", () => {
+  const d = decide(
+    "issue_comment",
+    comment({ issue: { number: 42, state: "open" } }),
+  );
+  assert.equal(d.run, "skip");
+});
+
+test("only a newly created comment triggers, never an edit", () => {
+  // Otherwise one comment could be re-triggered indefinitely by editing it.
+  assert.equal(
+    decide("issue_comment", comment({ action: "edited" })).run,
+    "skip",
+  );
+  assert.equal(
+    decide("issue_comment", comment({ action: "deleted" })).run,
+    "skip",
+  );
+});
+
+test("the handle matches as a word, not as a substring", () => {
+  assert.equal(mentions("@shamwari please review", "@shamwari"), true);
+  assert.equal(
+    mentions("hey @Shamwari", "@shamwari"),
+    true,
+    "case-insensitive",
+  );
+  assert.equal(mentions("(@shamwari)", "@shamwari"), true);
+  // These must NOT fire, or every mention of the brand becomes a review.
+  assert.equal(mentions("see @shamwari-docs", "@shamwari"), false);
+  assert.equal(mentions("mail me at bryan@shamwari.com", "@shamwari"), false);
+  assert.equal(mentions("shamwari is the brand", "@shamwari"), false);
+  assert.equal(mentions("@shamwariai", "@shamwari"), false);
+  assert.equal(mentions(undefined, "@shamwari"), false);
+});
+
+test("the handle is configurable, because the brand is", () => {
+  const d = decide(
+    "issue_comment",
+    comment({
+      comment: {
+        body: "@nyuchi review this",
+        author_association: "OWNER",
+        user: { login: "bryan", type: "User" },
+      },
+    }),
+    "@nyuchi",
+  );
+  assert.equal(d.run, "mention");
 });
