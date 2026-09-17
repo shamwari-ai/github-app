@@ -4,6 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Env } from "../src/env";
+import { protectedResourceMetadata } from "../src/auth";
 import { createReview, missingPermissions, resolveRepo } from "../src/github";
 
 const env = (over: Partial<Env> = {}): Env =>
@@ -147,4 +148,25 @@ test("an empty installation misses everything requested", () => {
     missingPermissions({ pull_requests: "write", issues: "write" }, {}),
     ["pull_requests:write", "issues:write"],
   );
+});
+
+// --- protected resource metadata -----------------------------------------
+
+test("the metadata advertises no scopes", () => {
+  // Advertising a scope WorkOS does not define is worse than advertising
+  // none: the client asks for it, WorkOS returns `error=invalid_scope` to the
+  // client's callback, and the user never reaches a login page. This worker
+  // gates on organization, role and permission claims, never on scopes.
+  //
+  // Measured against the live authorization server:
+  //   scope=(none)                 -> 302 to the AuthKit login page
+  //   scope=openid profile email   -> 302 to the AuthKit login page
+  //   scope=github:read            -> 302 ?error=invalid_scope
+  const meta = protectedResourceMetadata({
+    MCP_RESOURCE_URL: "https://github.nyuchi.dev/mcp",
+    WORKOS_AUTHORIZATION_SERVER: "https://accounts.mukoko.com",
+  } as Env);
+  assert.equal("scopes_supported" in meta, false);
+  assert.deepEqual(meta.authorization_servers, ["https://accounts.mukoko.com"]);
+  assert.equal(meta.resource, "https://github.nyuchi.dev/mcp");
 });
