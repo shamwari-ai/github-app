@@ -60,7 +60,7 @@ export const TOOLS: Tool[] = [
   {
     name: "github_whoami",
     description:
-      "Verify the GitHub App credentials and report which permissions the App holds, which the scoped token requests, and which repositories are allowlisted. Use as a connectivity and configuration check before anything else.",
+      "Verify the GitHub App credentials and report, for EVERY allowlisted repository, whether the App is installed there and whether that installation grants the permissions the scoped token asks for. Use this first when anything returns 422 or 404: a token mint requests the whole permission set in one call, so a single gap fails every tool on that repository, and a permission the App declares is not held until the installation owner accepts it.",
     inputSchema: {
       type: "object",
       properties: {},
