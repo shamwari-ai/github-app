@@ -116,10 +116,27 @@ export async function verifyWorkosToken(
   if (typeof claims.nbf === "number" && claims.nbf > nowSec) {
     throw new AuthError("token not yet valid");
   }
-  if (env.WORKOS_ISSUER && claims.iss !== env.WORKOS_ISSUER) {
+  // Required, not optional. Treating an unset WORKOS_ISSUER as "skip the
+  // check" means a misconfigured worker silently accepts tokens from any
+  // issuer whose key happens to be in the configured JWKS — fail-open on the
+  // one variable an operator is most likely to forget.
+  if (!env.WORKOS_ISSUER) {
+    throw new AuthError("WorkOS auth is not configured (WORKOS_ISSUER unset)");
+  }
+  if (claims.iss !== env.WORKOS_ISSUER) {
     throw new AuthError("issuer mismatch");
   }
-  if (env.WORKOS_AUDIENCE) {
+  // Also required. Without it this worker accepts any token the environment
+  // minted for ANY of its resources: an MCP client holding a token for, say,
+  // the MongoDB server could spend it here. The audience claim is the only
+  // thing that binds a token to THIS resource, which is exactly the
+  // confused-deputy case it exists to prevent.
+  if (!env.WORKOS_AUDIENCE) {
+    throw new AuthError(
+      "WorkOS auth is not configured (WORKOS_AUDIENCE unset)",
+    );
+  }
+  {
     // WORKOS_AUDIENCE may list several acceptable audiences (comma-separated) —
     // e.g. the Connect client id AND the resource URL — because WorkOS may
     // stamp `aud` as either depending on the token flow. The token's `aud`
