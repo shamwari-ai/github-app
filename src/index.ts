@@ -82,14 +82,22 @@ export default {
     // WorkOS Connect: verify the caller's access token on every /mcp request.
     const header = request.headers.get("Authorization") || "";
     const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-    if (!token) return unauthorized(env, "missing bearer token");
+    if (!token) {
+      // Logged because Cloudflare redacts the Authorization header, so the
+      // request log alone cannot distinguish "client sent no token" from
+      // "token was rejected" — and those have completely different causes.
+      console.warn("auth rejected: no bearer token presented");
+      return unauthorized(env, "missing bearer token");
+    }
     try {
       await verifyWorkosToken(token, env);
     } catch (e) {
-      return unauthorized(
-        env,
-        e instanceof AuthError ? e.message : "unauthorized",
-      );
+      const message = e instanceof AuthError ? e.message : "unauthorized";
+      const detail = e instanceof AuthError ? e.detail : undefined;
+      // The response stays generic; the log names the gate and what the token
+      // carried. Never log the token itself.
+      console.warn(`auth rejected: ${message}${detail ? ` — ${detail}` : ""}`);
+      return unauthorized(env, message);
     }
 
     if (request.method !== "POST") {

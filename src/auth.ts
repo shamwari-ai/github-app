@@ -17,9 +17,19 @@
 import { type Env, splitCsv } from "./env";
 
 export class AuthError extends Error {
-  constructor(message: string) {
+  /**
+   * Context for the operator, logged but NEVER returned to the caller.
+   *
+   * The 401 body stays generic while the log says which gate rejected the
+   * token and what it actually carried. Without this an auth failure is a
+   * bare 401 in the request log and the only way to diagnose it is to guess.
+   */
+  readonly detail?: string;
+
+  constructor(message: string, detail?: string) {
     super(message);
     this.name = "AuthError";
+    this.detail = detail;
   }
 }
 
@@ -124,7 +134,10 @@ export async function verifyWorkosToken(
     throw new AuthError("WorkOS auth is not configured (WORKOS_ISSUER unset)");
   }
   if (claims.iss !== env.WORKOS_ISSUER) {
-    throw new AuthError("issuer mismatch");
+    throw new AuthError(
+      "issuer mismatch",
+      `token iss=${String(claims.iss)} expected=${env.WORKOS_ISSUER}`,
+    );
   }
   // Also required. Without it this worker accepts any token the environment
   // minted for ANY of its resources: an MCP client holding a token for, say,
@@ -153,12 +166,22 @@ export async function verifyWorkosToken(
         ? [audClaim]
         : [];
     const ok = accepted.some((a) => tokenAuds.includes(a));
-    if (!ok) throw new AuthError("audience mismatch");
+    if (!ok) {
+      throw new AuthError(
+        "audience mismatch",
+        `token aud=${JSON.stringify(tokenAuds)} accepted=${JSON.stringify(accepted)}`,
+      );
+    }
   }
 
   // Org gate — only members of the configured organization (blocks customers).
   if (env.WORKOS_ORG_ID && claims.org_id !== env.WORKOS_ORG_ID) {
-    throw new AuthError("organization not permitted");
+    // Overwhelmingly the commonest cause: the signer belongs to several
+    // organizations and AuthKit issued the token against the wrong one.
+    throw new AuthError(
+      "organization not permitted",
+      `token org_id=${String(claims.org_id)} expected=${env.WORKOS_ORG_ID}`,
+    );
   }
 
   // Platform permission gate — the caller must hold the required role OR
@@ -183,7 +206,10 @@ export async function verifyWorkosToken(
     const permOk =
       reqPerms.length > 0 && reqPerms.some((p) => tokenPerms.includes(p));
     if (!roleOk && !permOk) {
-      throw new AuthError("missing required platform role/permission");
+      throw new AuthError(
+        "missing required platform role/permission",
+        `token roles=${JSON.stringify(tokenRoles)} permissions=${JSON.stringify(tokenPerms)} required_roles=${JSON.stringify(reqRoles)} required_permissions=${JSON.stringify(reqPerms)}`,
+      );
     }
   }
 
