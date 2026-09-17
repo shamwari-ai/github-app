@@ -88,7 +88,8 @@ may call this shows up in a diff:
 - **Role/permission gate** — the caller must hold `WORKOS_REQUIRED_ROLES` or
   `WORKOS_REQUIRED_PERMISSIONS`. A plain org member with neither is refused.
 
-Verification fails closed: any error is a 401.
+Verification fails closed: any error is a 401, and a missing setting is an
+error rather than a skipped check.
 
 ## Setup
 
@@ -140,7 +141,11 @@ is **byte-identical to `RELEASE_APP_PRIVATE_KEY`** with no `openssl pkcs8`
 step, which is one fewer thing to get wrong. `test/der.test.ts` checks the
 wrapper against OpenSSL's own output at 2048, 3072 and 4096 bits.
 
-Until `WORKOS_ISSUER` is set, `/mcp` stays locked.
+All three are required. `verifyWorkosToken` refuses outright when any of
+`WORKOS_JWKS_URL`, `WORKOS_ISSUER` or `WORKOS_AUDIENCE` is unset, rather than
+treating a missing value as "skip that check" — an unset audience would
+otherwise let a token minted for any other MCP resource in the same WorkOS
+environment be spent here. `test/auth.test.ts` pins that.
 
 ## Endpoints
 
