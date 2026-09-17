@@ -107,10 +107,31 @@ private key is the secret:
 
 ```bash
 wrangler secret put GITHUB_APP_PRIVATE_KEY   # the whole .pem, BEGIN/END included
-wrangler secret put WORKOS_JWKS_URL
-wrangler secret put WORKOS_ISSUER
-wrangler secret put WORKOS_AUDIENCE
+wrangler secret put WORKOS_JWKS_URL          # https://accounts.mukoko.com/oauth2/jwks
+wrangler secret put WORKOS_ISSUER            # https://accounts.mukoko.com
+wrangler secret put WORKOS_AUDIENCE          # https://github.nyuchi.dev/mcp
 ```
+
+The three WorkOS values are not guesses. `issuer` and `jwks_uri` are what
+`https://accounts.mukoko.com/.well-known/oauth-authorization-server` serves;
+the audience is this worker's resource URI.
+
+**Do not use `https://api.workos.com/sso/jwks/<client_id>`.** That is the older
+SSO-profile JWKS. AuthKit access tokens here are signed by the authorization
+server above, so that endpoint holds no matching key and every call fails
+verification with `no matching signing key`. `auth.mukoko.com` is the WorkOS
+auth API and serves no authorization-server metadata at all — it 404s.
+
+`WORKOS_AUDIENCE` only carries the resource URI once that URI is registered as
+an **AuthKit OAuth resource** in the WorkOS environment
+(`environment_01KQBBSMDHMT9Y5GVD8S1A3C0W`, the Production environment that
+holds the Nyuchi Africa org, `org_01KRDAB894DJF5V38PT5617TV1`). Until it is,
+WorkOS will not mint a token scoped to this resource and verification fails on
+`audience mismatch`.
+
+The two authorization gates are checked against that same environment:
+`platform-team` is the slug of the **Platform Team** role, and `mongodb:access`
+is a permission it holds.
 
 `GITHUB_APP_PRIVATE_KEY` takes GitHub's own download format — PKCS#1,
 `BEGIN RSA PRIVATE KEY` — as well as PKCS#8. WebCrypto only imports PKCS#8, so
