@@ -65,6 +65,25 @@ WORKOS_ORG_ID = "org_01KRDAB894DJF5V38PT5617TV1"
 WORKOS_REQUIRED_ROLES = "platform-team"
 WORKOS_REQUIRED_PERMISSIONS = "mongodb:access"
 
+# The reviewing model, as a Workers AI model id. A var, not a constant in
+# code, so the model can be changed — and two models compared on the same
+# pull request — without shipping new code.
+#
+#   @cf/zai-org/glm-5.3         1.31M ctx, $1.40/$4.40 per Mtok, reasoning
+#   @cf/zai-org/glm-5.3-flash   1.31M ctx, $0.15/$0.50  — ~9x cheaper
+#   @cf/moonshotai/kimi-k2.7-code  262K ctx, $0.95/$4.00, code-specialised
+#
+# Measured against this repository the median pull request diff is 4,757
+# tokens and the largest 8,988, so a review costs roughly $0.027 on glm-5.3
+# and $0.003 on the flash variant. At this repository's volume the difference
+# is a few dollars a year: choose on whether the review is worth reading, not
+# on price. GLM 5.3 requires a Workers Paid plan.
+REVIEW_MODEL = "@cf/zai-org/glm-5.3"
+
+# KILL SWITCH. Set to exactly "false" to make every review call fail closed
+# without a code deploy.
+REVIEW_ENABLED = "true"
+
 # Secrets — set with `wrangler secret put <NAME>` or in the Cloudflare
 # dashboard (Workers -> nyuchi-github-mcp -> Settings -> Variables and Secrets):
 #
@@ -95,6 +114,13 @@ WORKOS_REQUIRED_PERMISSIONS = "mongodb:access"
 # (environment_01KQBBSMDHMT9Y5GVD8S1A3C0W, the Production environment holding
 # the Nyuchi Africa org). Until then WorkOS will not mint a token scoped to
 # this resource. /mcp stays locked while WORKOS_ISSUER is unset.
+
+# ---- Review agent -----------------------------------------------------------
+# Workers AI. No API key: inference runs on the same platform as the worker
+# and is billed to this Cloudflare account, so the review agent adds no
+# third-party credential to hold and no egress to allow.
+[ai]
+binding = "AI"
 
 # Worker observability. Mirrors what is configured on the deployed worker, so
 # a `wrangler deploy` reproduces it rather than overwriting it — the same trap
