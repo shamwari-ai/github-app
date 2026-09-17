@@ -73,8 +73,28 @@ WORKOS_REQUIRED_PERMISSIONS = "mongodb:access"
 #                           GitHub hands you) or PKCS#8 both work — the worker
 #                           wraps PKCS#1 itself, so this is byte-identical to
 #                           RELEASE_APP_PRIVATE_KEY with no conversion.
-#   WORKOS_JWKS_URL         WorkOS Connect JWKS endpoint
-#                           (https://api.workos.com/sso/jwks/<client_id>)
-#   WORKOS_ISSUER           expected `iss` claim (leave unset to keep /mcp
-#                           locked until it is configured)
-#   WORKOS_AUDIENCE         expected `aud` claim(s), comma-separated
+#   WORKOS_JWKS_URL         https://accounts.mukoko.com/oauth2/jwks
+#   WORKOS_ISSUER           https://accounts.mukoko.com
+#   WORKOS_AUDIENCE         https://github.nyuchi.dev/mcp
+#
+# Those three are not guesses: they are the `jwks_uri` and `issuer` that
+# https://accounts.mukoko.com/.well-known/oauth-authorization-server serves,
+# and the resource URI below. Do NOT use the older SSO form
+# https://api.workos.com/sso/jwks/<client_id> — AuthKit access tokens here are
+# signed by the authorization server above, so that JWKS has no matching key
+# and every call fails verification.
+#
+# `aud` only carries the resource URI once that URI is registered as an
+# AuthKit OAuth resource in the WorkOS environment
+# (environment_01KQBBSMDHMT9Y5GVD8S1A3C0W, the Production environment holding
+# the Nyuchi Africa org). Until then WorkOS will not mint a token scoped to
+# this resource. /mcp stays locked while WORKOS_ISSUER is unset.
+
+# Worker observability. Invocation logs on, full sampling, traces off.
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
