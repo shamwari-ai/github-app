@@ -145,7 +145,7 @@ test("a missing or mismatched Mcp-Method is refused", () => {
 });
 
 test("tools/call requires an Mcp-Name matching params.name", () => {
-  const body = modernBody("tools/call", { name: "github_whoami" });
+  const body = modernBody("tools/call", { name: "nyuchi_whoami" });
   const base = {
     "MCP-Protocol-Version": MODERN_VERSION,
     "Mcp-Method": "tools/call",
@@ -153,13 +153,13 @@ test("tools/call requires an Mcp-Name matching params.name", () => {
   assert.equal(validateModernRequest(hdrs(base), body)?.code, HEADER_MISMATCH);
   assert.equal(
     validateModernRequest(
-      hdrs({ ...base, "Mcp-Name": "github_get_issue" }),
+      hdrs({ ...base, "Mcp-Name": "nyuchi_get_issue" }),
       body,
     )?.code,
     HEADER_MISMATCH,
   );
   assert.equal(
-    validateModernRequest(hdrs({ ...base, "Mcp-Name": "github_whoami" }), body),
+    validateModernRequest(hdrs({ ...base, "Mcp-Name": "nyuchi_whoami" }), body),
     null,
   );
 });
@@ -214,7 +214,7 @@ test("a Base64-sentinel Mcp-Name is decoded before comparison", () => {
 });
 
 test("a plain header value passes through unchanged", () => {
-  assert.equal(decodeHeaderValue("github_whoami"), "github_whoami");
+  assert.equal(decodeHeaderValue("nyuchi_whoami"), "nyuchi_whoami");
 });
 
 test("an undecodable sentinel fails the comparison rather than throwing", () => {
