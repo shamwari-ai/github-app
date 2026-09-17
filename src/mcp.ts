@@ -93,15 +93,32 @@ interface Tool {
   handler: (env: Env, args: Record<string, unknown>) => Promise<unknown>;
 }
 
+/**
+ * A caller sent arguments the tool cannot use.
+ *
+ * Distinct from every other throw because the message is the whole point: it
+ * names the field, so the caller can fix the call and try again. toolError()
+ * lets it through for exactly that reason, where an unexpected throw is
+ * answered generically.
+ */
+export class ArgumentError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ArgumentError";
+  }
+}
+
 const str = (v: unknown, field: string): string => {
   if (typeof v !== "string" || !v)
-    throw new Error(`missing/invalid "${field}"`);
+    throw new ArgumentError(
+      `missing or invalid "${field}": expected a non-empty string`,
+    );
   return v;
 };
 
 const num = (v: unknown, field: string): number => {
   if (typeof v !== "number" || !Number.isFinite(v))
-    throw new Error(`missing/invalid "${field}"`);
+    throw new ArgumentError(`missing or invalid "${field}": expected a number`);
   return v;
 };
 
@@ -269,7 +286,10 @@ export const TOOLS: Tool[] = [
       for (const k of ["title", "body", "base", "state"] as const) {
         if (a[k] !== undefined) patch[k] = a[k];
       }
-      if (Object.keys(patch).length === 0) throw new Error("nothing to update");
+      if (Object.keys(patch).length === 0)
+        throw new ArgumentError(
+          "nothing to update: pass at least one field to change",
+        );
       return updatePullRequest(
         env,
         str(a.repo, "repo"),
@@ -372,7 +392,10 @@ export const TOOLS: Tool[] = [
       ] as const) {
         if (a[k] !== undefined) patch[k] = a[k];
       }
-      if (Object.keys(patch).length === 0) throw new Error("nothing to update");
+      if (Object.keys(patch).length === 0)
+        throw new ArgumentError(
+          "nothing to update: pass at least one field to change",
+        );
       return updateIssue(
         env,
         str(a.repo, "repo"),
@@ -434,15 +457,16 @@ function err(id: unknown, code: number, message: string) {
 /**
  * What a failed tools/call returns.
  *
- * A GitHubError message is written to be read by the caller — which
- * repository, which permission, which status — so it passes through. Anything
+ * An ArgumentError names the field the caller got wrong, and a GitHubError
+ * names the repository, permission or status — both are written to be read by
+ * the caller and acted on, so both pass through. Anything
  * else is an unexpected throw whose message is internal detail: a stack
  * fragment, a property name, an internal URL. Log it, return a generic
  * string. This is the same rule index.ts applies on the transport path; the
  * two error paths should not disagree about what a caller may see.
  */
 export function toolError(name: string, e: unknown) {
-  if (e instanceof GitHubError) {
+  if (e instanceof ArgumentError || e instanceof GitHubError) {
     return {
       content: [{ type: "text", text: `Error: ${e.message}` }],
       isError: true,
