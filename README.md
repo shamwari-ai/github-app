@@ -12,22 +12,22 @@ config with a different URL.
 
 | Tool                           | What it does                                                     |
 | ------------------------------ | ---------------------------------------------------------------- |
-| `github_whoami`                | Per-repo installation and permission readiness — start here      |
-| `github_list_pull_requests`    | PRs, most recently updated first                                 |
-| `github_get_pull_request`      | One PR: metadata, mergeability, files, check rollup              |
-| `github_get_pull_request_diff` | The unified diff — the text you actually review                  |
-| `github_create_review`         | Submit a review, `COMMENT` or `REQUEST_CHANGES`, inline comments |
-| `github_create_pull_request`   | Open a PR (draft unless told otherwise)                          |
-| `github_update_pull_request`   | Title, body, base, open/close                                    |
-| `github_list_issues`           | Issues, most recently updated first                              |
-| `github_get_issue`             | One issue                                                        |
-| `github_create_issue`          | File an issue                                                    |
-| `github_update_issue`          | Retitle, relabel, reassign, open/close                           |
-| `github_comment`               | Comment on an issue or PR                                        |
+| `nyuchi_whoami`                | Per-repo installation and permission readiness — start here      |
+| `nyuchi_list_pull_requests`    | PRs, most recently updated first                                 |
+| `nyuchi_get_pull_request`      | One PR: metadata, mergeability, files, check rollup              |
+| `nyuchi_get_pull_request_diff` | The unified diff — the text you actually review                  |
+| `nyuchi_create_review`         | Submit a review, `COMMENT` or `REQUEST_CHANGES`, inline comments |
+| `nyuchi_create_pull_request`   | Open a PR (draft unless told otherwise)                          |
+| `nyuchi_update_pull_request`   | Title, body, base, open/close                                    |
+| `nyuchi_list_issues`           | Issues, most recently updated first                              |
+| `nyuchi_get_issue`             | One issue                                                        |
+| `nyuchi_create_issue`          | File an issue                                                    |
+| `nyuchi_update_issue`          | Retitle, relabel, reassign, open/close                           |
+| `nyuchi_comment`               | Comment on an issue or PR                                        |
 
 ## What it deliberately cannot do
 
-**It does not approve pull requests.** `github_create_review` accepts
+**It does not approve pull requests.** `nyuchi_create_review` accepts
 `COMMENT` and `REQUEST_CHANGES` and refuses `APPROVE` in any casing, before
 the repository allowlist is even consulted. An agent that can approve can
 satisfy a branch protection review requirement by itself, letting code reach a
@@ -74,7 +74,7 @@ Token asks:    contents:read   pull_requests:write  issues:write  metadata:read
 >
 > Two states look alike and are not: an App can _declare_ a permission while
 > the installation has not _accepted_ it. Adding one puts the installation
-> into pending review until an owner approves. `github_whoami` reports what
+> into pending review until an owner approves. `nyuchi_whoami` reports what
 > the installation actually grants, per repository, so the difference shows up
 > in one call rather than as a 422 mid-task.
 
