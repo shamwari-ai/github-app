@@ -27,6 +27,7 @@ import {
   validateModernRequest,
   type JsonRpcLike,
 } from "./protocol";
+import { handleWebhook } from "./webhook";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -107,7 +108,11 @@ function unauthorized(env: Env, message: string): Response {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
     const url = new URL(request.url);
 
     if (request.method === "OPTIONS") {
@@ -116,6 +121,14 @@ export default {
 
     if (url.pathname === "/health") {
       return json({ status: "ok", server: "nyuchi-github-mcp" });
+    }
+
+    // GitHub webhook ingest. NOT behind the WorkOS bearer check: GitHub does
+    // not carry one. It authenticates with its own HMAC signature over the
+    // raw body instead, which handleWebhook verifies before reading anything
+    // else from the request.
+    if (url.pathname === "/webhook") {
+      return handleWebhook(request, env, ctx);
     }
 
     // OAuth 2.0 Protected Resource Metadata — public, so clients can discover

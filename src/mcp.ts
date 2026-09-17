@@ -435,7 +435,7 @@ export const TOOLS: Tool[] = [
     // usually does — a client deciding whether to confirm needs the ceiling.
     annotations: CREATE,
     description:
-      "Review a pull request with a model running on Workers AI and return the findings, each anchored to a line the diff adds. DRY RUN by default: nothing is posted unless post is true, so the same call can compare two models on one pull request without either writing to it. Cannot approve — it submits through the same path that refuses APPROVE. Findings are returned most serious first and capped; anything the model aimed at a line the diff does not add is returned separately under unanchored rather than dropped.",
+      "Review a pull request with a model running on Workers AI and return the findings, each naming a line the diff adds. DRY RUN by default: nothing is posted unless post is true, so the same call can compare two models on one pull request without either writing to it. When it does post, it posts ONE comment on the head commit — never a pull request review — so it cannot approve, cannot request changes, and cannot affect merge state. Findings come back most serious first and capped; anything the model aimed at a line the diff does not add is returned separately under unanchored rather than dropped.",
     inputSchema: {
       type: "object",
       properties: {
@@ -451,28 +451,38 @@ export const TOOLS: Tool[] = [
           description:
             "Post the review to GitHub. Default false — read the findings first.",
         },
-        event: {
+        head_sha: {
           type: "string",
-          enum: ["COMMENT", "REQUEST_CHANGES"],
           description:
-            "Review event when posting. Default COMMENT. REQUEST_CHANGES leaves a mark a person must dismiss, so pass it only once the reviewer has earned it.",
+            "The commit to comment on. Required only when post is true — the review is posted as a comment on that commit, never as a pull request review.",
         },
         max_findings: {
           type: "number",
-          description: "Cap on inline findings. Default 10.",
+          description: "Cap on reported findings. Default 10.",
+        },
+        force: {
+          type: "boolean",
+          description:
+            "Post even if this commit already carries a review. Default false.",
         },
       },
       required: ["repo", "number"],
       additionalProperties: false,
     },
     handler: (env, a) =>
-      reviewPullRequest(env, str(a.repo, "repo"), num(a.number, "number"), {
-        model: typeof a.model === "string" ? a.model : undefined,
-        post: a.post === true,
-        event: a.event === "REQUEST_CHANGES" ? "REQUEST_CHANGES" : "COMMENT",
-        maxFindings:
-          typeof a.max_findings === "number" ? a.max_findings : undefined,
-      }),
+      reviewPullRequest(
+        env,
+        str(a.repo, "repo"),
+        num(a.number, "number"),
+        {
+          model: typeof a.model === "string" ? a.model : undefined,
+          post: a.post === true,
+          force: a.force === true,
+          maxFindings:
+            typeof a.max_findings === "number" ? a.max_findings : undefined,
+        },
+        typeof a.head_sha === "string" ? a.head_sha : undefined,
+      ),
   },
 ];
 
