@@ -12,7 +12,7 @@ config with a different URL.
 
 | Tool                           | What it does                                                     |
 | ------------------------------ | ---------------------------------------------------------------- |
-| `github_whoami`                | Verify credentials; report App permissions vs token permissions  |
+| `github_whoami`                | Per-repo installation and permission readiness — start here      |
 | `github_list_pull_requests`    | PRs, most recently updated first                                 |
 | `github_get_pull_request`      | One PR: metadata, mergeability, files, check rollup              |
 | `github_get_pull_request_diff` | The unified diff — the text you actually review                  |
@@ -67,12 +67,16 @@ Token asks:    contents:read   pull_requests:write  issues:write  metadata:read
                cannot merge                       (see below)
 ```
 
-> **Known gap.** The release App does **not** currently hold an Issues
-> permission, so every issue tool fails with GitHub's `422` naming it until
-> **Issues: read/write** is added to the App and the installation
-> re-authorised. `github_whoami` reports this directly under
-> `permissions_missing_from_app`, so it is visible in one call rather than as
-> a surprise mid-task.
+> **A missing permission breaks everything, not just the tool that needs it.**
+> The token mint requests the whole set in one call, so if the installation
+> does not grant `issues: write`, GitHub rejects the mint with `422` and no
+> token is produced — reading a PR diff fails too.
+>
+> Two states look alike and are not: an App can _declare_ a permission while
+> the installation has not _accepted_ it. Adding one puts the installation
+> into pending review until an owner approves. `github_whoami` reports what
+> the installation actually grants, per repository, so the difference shows up
+> in one call rather than as a 422 mid-task.
 
 ## Auth
 
