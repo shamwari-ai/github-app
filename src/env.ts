@@ -47,7 +47,13 @@ export interface Env {
   // constructing an Env without one; reviewPullRequest() checks for it and
   // says what to add rather than throwing on undefined.
   AI?: {
-    run(model: string, input: Record<string, unknown>): Promise<unknown>;
+    run(
+      model: string,
+      input: Record<string, unknown>,
+      // The AI Gateway options. A THIRD argument, not a field of `input` —
+      // see gatewayOptions() in review.ts for why that distinction bites.
+      options?: Record<string, unknown>,
+    ): Promise<unknown>;
   };
 
   // Full Workers AI model id, e.g. "@cf/zai-org/glm-5.3". A var rather than a
@@ -58,6 +64,22 @@ export interface Env {
   // Quality and cost ceiling on the annotated diff, in bytes. Not a context
   // limit: every candidate model holds at least 262K tokens.
   REVIEW_MAX_DIFF_BYTES?: string;
+
+  // The handle that summons a review in a comment, e.g. "@shamwari". A var
+  // so the agent's public name can change without a code change.
+  REVIEW_MENTION?: string;
+
+  // Which author_association values may summon a review, comma-separated.
+  // Default OWNER,MEMBER,COLLABORATOR. This is a spending gate as much as an
+  // access one: on a public repository anyone can comment, and without it a
+  // stranger typing the handle bills model calls to the repository owner.
+  REVIEW_TRIGGER_ASSOCIATIONS?: string;
+
+  // AI Gateway to route inference through. Unset means calling Workers AI
+  // directly. Set it and you get caching, rate limiting, retries, and a log
+  // of every review with metadata attached — which is what turns "what did
+  // this cost?" from a guess into a query.
+  AI_GATEWAY_ID?: string;
 
   // KILL SWITCH. Exactly "false" disables the reviewer. Compared against the
   // string "false" rather than treated as a boolean so that an unset or
