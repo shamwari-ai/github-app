@@ -75,7 +75,13 @@ WORKOS_REQUIRED_PERMISSIONS = "mongodb:access"
 #                           RELEASE_APP_PRIVATE_KEY with no conversion.
 #   WORKOS_JWKS_URL         https://accounts.mukoko.com/oauth2/jwks
 #   WORKOS_ISSUER           https://accounts.mukoko.com
-#   WORKOS_AUDIENCE         https://github.nyuchi.dev/mcp
+#   WORKOS_AUDIENCE         https://github.nyuchi.dev/mcp,client_01KVTX0V2K1VM3PSC0DJ9VZWTV
+#
+# WORKOS_AUDIENCE takes a comma-separated list because `aud` depends on how
+# the token was obtained. A client that registers itself dynamically gets the
+# RESOURCE URI; a client configured with the "Nyuchi Internal Tools" Connect
+# app (client_01KVTX0V2K1VM3PSC0DJ9VZWTV) gets that CLIENT ID. Listing both
+# accepts either and still rejects tokens minted for anything else.
 #
 # Those three are not guesses: they are the `jwks_uri` and `issuer` that
 # https://accounts.mukoko.com/.well-known/oauth-authorization-server serves,
