@@ -24,6 +24,7 @@ config with a different URL.
 | `nyuchi_create_issue`          | File an issue                                                    |
 | `nyuchi_update_issue`          | Retitle, relabel, reassign, open/close                           |
 | `nyuchi_comment`               | Comment on an issue or PR                                        |
+| `nyuchi_review_pull_request`   | Review a PR with a model on Workers AI — dry run by default      |
 
 ## What it deliberately cannot do
 
@@ -265,6 +266,95 @@ The hints are advisory and a client may ignore them. They are not the
 safeguard — the approve refusal and the read-only token scope are, and those
 are enforced server-side regardless of what any client believes.
 
+## The review agent
+
+`nyuchi_review_pull_request` reads a diff, asks a model on **Workers AI** what
+is wrong with it, and returns findings anchored to specific lines. Inference
+runs on the same platform as the worker, so there is no third-party API key to
+hold and no egress to allow — it is billed to the Cloudflare account.
+
+### It is a dry run unless you say otherwise
+
+`post` defaults to `false`. Two reasons: the first thing anyone should do with
+a new reviewer is read what it _would_ have said, and a dry run lets the same
+tool run two models over one pull request without either of them writing to
+it.
+
+When it does post, it posts through `createReview()` — which refuses `APPROVE`
+before the allowlist is consulted. The agent inherits that guarantee rather
+than restating it. It also defaults to `COMMENT` even when findings are
+blocking: `REQUEST_CHANGES` leaves a mark a person has to dismiss, so it is
+something this reviewer should earn on evidence, not assume on its first day.
+
+### Line numbers are computed, not asked for
+
+A unified diff carries hunk headers (`@@ -a,b +c,d @@`) and leaves the
+arithmetic to the reader. Asking a language model to do that arithmetic gets
+you comments on unrelated lines — a review that looks careful and points at
+the wrong code, which is worse than no review.
+
+So `annotateDiff()` does the arithmetic and writes the answer into the text
+the model reads:
+
+```
+@@ -10,6 +10,7 @@ function f() {
+    10|const a = 1;
+    11|const b = 2;
+-     |const c = 3;
++   12|const c = 4;
++   13|const d = 5;
+    14|const e = 6;
+```
+
+Only `+` lines are valid targets, and the set of them is kept. A finding
+aimed at anything else is returned under `unanchored` and rendered into the
+review body instead of being posted inline — because GitHub rejects the whole
+review call on one bad position, and one invented line number would otherwise
+take every real finding down with it.
+
+### The model output is not trusted
+
+Cloudflare's own JSON-mode documentation says it "can't guarantee that the
+model responds according to the requested JSON Schema". So the schema is a
+request and `parseFindings()` is the enforcement: malformed findings are
+dropped one at a time, an unknown severity degrades to `note`, and prose
+instead of JSON fails loudly rather than posting an empty review.
+
+### Choosing a model
+
+`REVIEW_MODEL` is a var, not a constant, so the model changes — and two models
+are compared — without shipping code.
+
+| Model                           | Context | $/Mtok in / out | Per review¹ |
+| ------------------------------- | ------: | --------------: | ----------: |
+| `@cf/zai-org/glm-5.3`           |   1.31M |     1.40 / 4.40 |     ~$0.027 |
+| `@cf/zai-org/glm-5.3-flash`     |   1.31M |     0.15 / 0.50 |     ~$0.003 |
+| `@cf/moonshotai/kimi-k2.7-code` |    262K |     0.95 / 4.00 |     ~$0.023 |
+
+¹ Measured against this repository: the median pull request diff is 4,757
+tokens and the largest 8,988, so a review is roughly 7K in and 4K out
+including GLM's reasoning tokens, which bill as output.
+
+**At this repository's volume that is a few dollars a year either way**, so
+choose on whether the review is worth reading, not on price. GLM 5.3 requires
+a Workers Paid plan. The honest way to decide is to run candidates over pull
+requests whose defects are already known and see which one finds them.
+
+### What it will not tell you
+
+The system prompt excludes formatting, naming, "consider extracting this",
+praise, and summaries of what the diff does. Prettier and markdownlint already
+gate every pull request in this org, so a comment about them is a comment
+about a check that already runs. It is also told that **returning zero
+findings is a correct outcome** — the failure mode of an automated reviewer is
+not being wrong, it is being voluminous, and a bot that posts nine nits and
+one real bug has buried the bug.
+
+### Kill switch
+
+`REVIEW_ENABLED = "false"` fails every review closed, before any model call,
+without a code deploy.
+
 ## Endpoints
 
 ```
@@ -281,6 +371,7 @@ src/env.ts      bindings and the csv helper
 src/protocol.ts era detection, mirrored-header validation, version constants
 src/auth.ts     WorkOS token verification (shared logic with nyuchi-fly-mcp)
 src/github.ts   App JWT, scoped installation tokens, REST operations
+src/review.ts   the review engine: diff annotation, the model call, anchoring
 src/mcp.ts      tool definitions and JSON-RPC dispatch
 src/index.ts    routing, CORS, auth enforcement
 ```
@@ -294,7 +385,15 @@ code rather than reimplementing it.
 **Milestone 1 — MCP server.** Claude is the brain; this worker is the hands.
 Nothing here acts on its own.
 
-**Milestone 2 — autonomous agent**, not yet built. Webhook ingest, an LLM call
-in the worker, and its own review loop, reusing these operations. It needs
-things this milestone does not: an Anthropic key as a Worker secret, a queue,
-rate limiting, loop guards against reviewing its own output, and a kill switch.
+**Milestone 2 — autonomous agent**, partly built. The _brain_ exists:
+`src/review.ts` reviews a pull request on demand through
+`nyuchi_review_pull_request`, and Workers AI removed the third-party API key
+that milestone was going to need.
+
+What is still missing is the _autonomy_: webhook ingest with signature
+verification, a queue so a slow review does not hold a webhook response open,
+per-repository rate limiting, dedup on head SHA, and loop guards so the agent
+does not review its own output. Deliberately sequenced this way — the review
+engine carries all the risk (is the output worth reading?) and none of it
+needs a webhook to answer, and the autonomous layer is then a caller of
+`reviewPullRequest()` rather than a second implementation of it.

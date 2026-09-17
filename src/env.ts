@@ -37,6 +37,30 @@ export interface Env {
   WORKOS_AUTHORIZATION_SERVER?: string; // advertised in resource metadata
   MCP_RESOURCE_URL?: string; // this resource's canonical URL
 
+  // ---- Review agent (Workers AI) ------------------------------------------
+  // The inference binding. Declared optional so every existing test can keep
+  // constructing an Env without one; reviewPullRequest() checks for it and
+  // says what to add rather than throwing on undefined.
+  AI?: {
+    run(model: string, input: Record<string, unknown>): Promise<unknown>;
+  };
+
+  // Full Workers AI model id, e.g. "@cf/zai-org/glm-5.3". A var rather than a
+  // constant so the model can be changed, and compared, without a deploy of
+  // new code — which is the whole point of the bake-off.
+  REVIEW_MODEL?: string;
+
+  // Quality and cost ceiling on the annotated diff, in bytes. Not a context
+  // limit: every candidate model holds at least 262K tokens.
+  REVIEW_MAX_DIFF_BYTES?: string;
+
+  // KILL SWITCH. Exactly "false" disables the reviewer. Compared against the
+  // string "false" rather than treated as a boolean so that an unset or
+  // misspelled value leaves the agent ENABLED-but-inert only where that is
+  // safe — here the agent cannot act without an explicit call anyway, and a
+  // typo silently disabling review would be its own kind of failure.
+  REVIEW_ENABLED?: string;
+
   // ---- Authorization gates (public policy) --------------------------------
   WORKOS_ORG_ID?: string; // required `org_id` claim — blocks other orgs
   WORKOS_REQUIRED_ROLES?: string; // comma-separated; one must match
