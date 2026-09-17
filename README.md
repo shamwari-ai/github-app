@@ -127,6 +127,32 @@ server above, so that endpoint holds no matching key and every call fails
 verification with `no matching signing key`. `auth.mukoko.com` is the WorkOS
 auth API and serves no authorization-server metadata at all — it 404s.
 
+### Two ways a client gets a token, and what `aud` is in each
+
+`WORKOS_AUDIENCE` accepts a comma-separated list, because the audience depends
+on how the client authenticated:
+
+| How the client got its token                          | `aud` carries                                          |
+| ----------------------------------------------------- | ------------------------------------------------------ |
+| Dynamic client registration (Claude registers itself) | the **resource URI**, `https://github.nyuchi.dev/mcp`  |
+| The **Nyuchi Internal Tools** Connect app             | its **client id**, `client_01KVTX0V2K1VM3PSC0DJ9VZWTV` |
+
+Listing both accepts either and still rejects a token minted for anything else,
+so set:
+
+```
+WORKOS_AUDIENCE = https://github.nyuchi.dev/mcp,client_01KVTX0V2K1VM3PSC0DJ9VZWTV
+```
+
+The Connect app route is worth preferring: it is **org-restricted to Nyuchi
+Africa**, so a signer who belongs to several organizations cannot accidentally
+present a token issued against the wrong one — the commonest way a valid token
+gets refused here. It is a public PKCE client, so a client id alone is enough,
+no secret, and `https://claude.ai/api/mcp/auth_callback` plus its `.com` twin
+are already registered on it. It grants `mongodb:access`, which satisfies this
+worker's permission gate; third-party app tokens surface permissions rather
+than the organization role, which is why that gate accepts either.
+
 `WORKOS_AUDIENCE` only carries the resource URI once that URI is registered as
 an **AuthKit OAuth resource** in the WorkOS environment
 (`environment_01KQBBSMDHMT9Y5GVD8S1A3C0W`, the Production environment that
