@@ -224,7 +224,7 @@ GitHub array:
 ```json
 {
   "items": [ ... ],
-  "limit": 20,
+  "count": 20,
   "page": 1,
   "has_more": true,
   "next_page": 2
