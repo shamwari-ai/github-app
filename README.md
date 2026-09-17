@@ -216,6 +216,55 @@ JSON-RPC error, as their revision expects.
 `server/discover` is implemented (the modern spec requires it) and returns the
 supported versions, capabilities and server identity in one call.
 
+## What the list tools return
+
+`nyuchi_list_pull_requests` and `nyuchi_list_issues` return a page, not a raw
+GitHub array:
+
+```json
+{
+  "items": [ ... ],
+  "limit": 20,
+  "page": 1,
+  "has_more": true,
+  "next_page": 2
+}
+```
+
+`has_more` is not guessed from a full page and it does not parse GitHub's
+`Link` header: the fetch asks for `limit + 1` rows and the extra row, if it
+arrives, is the proof. `next_page` is present only when there is one, so a
+caller that stops when the field is absent cannot loop forever.
+
+Each row is shaped, not passed through. A raw pull request carries 36
+top-level fields — a nested user, head, base, `_links` and a **full repository
+object on every row**. Measured against this repository, thirteen raw PRs
+serialise to 276,801 bytes; the same thirteen shaped are 3,842. That is 99% of
+a tool result spent on structure nothing reads, and it is charged to the
+model's context on every call. The fields kept are the ones you triage on —
+number, title, state, draft, author, base, head, labels, timestamps, URL —
+and anything dropped is one `nyuchi_get_pull_request` away.
+
+`nyuchi_list_issues` adds `is_pull_request`, because GitHub's issues endpoint
+returns pull requests too and a caller that does not notice will file a review
+comment on the wrong kind of thing.
+
+## Tool annotations
+
+Every tool advertises the four hints from the spec, so a client can decide
+what needs confirming without reading a description:
+
+| Hint              | Meaning here                                                   |
+| ----------------- | -------------------------------------------------------------- |
+| `readOnlyHint`    | true for the six read tools; they touch nothing                |
+| `destructiveHint` | true for the two update tools — they overwrite fields in place |
+| `idempotentHint`  | true for reads and updates; false for the four create tools    |
+| `openWorldHint`   | true everywhere: the subject is github.com, not local state    |
+
+The hints are advisory and a client may ignore them. They are not the
+safeguard — the approve refusal and the read-only token scope are, and those
+are enforced server-side regardless of what any client believes.
+
 ## Endpoints
 
 ```

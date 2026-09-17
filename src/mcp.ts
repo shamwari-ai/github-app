@@ -46,10 +46,49 @@ export const SERVER_INFO = {
   version: "0.1.0",
 } as const;
 
+/**
+ * Behaviour hints a client can surface before running a tool.
+ *
+ * They are hints, not enforcement — the real guarantees are the scoped token
+ * (contents:read, no workflows) and createReview refusing APPROVE. These let a
+ * client show which tools write before it calls one.
+ */
+interface Annotations {
+  readOnlyHint: boolean;
+  destructiveHint: boolean;
+  idempotentHint: boolean;
+  openWorldHint: boolean;
+}
+
+/** Reads nothing but the API; safe to repeat. */
+const READ: Annotations = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: true,
+};
+
+/** Adds something new each call — a second call makes a second thing. */
+const CREATE: Annotations = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: false,
+  openWorldHint: true,
+};
+
+/** Overwrites existing fields, so repeating is safe but the old value is gone. */
+const UPDATE: Annotations = {
+  readOnlyHint: false,
+  destructiveHint: true,
+  idempotentHint: true,
+  openWorldHint: true,
+};
+
 interface Tool {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  annotations: Annotations;
   handler: (env: Env, args: Record<string, unknown>) => Promise<unknown>;
 }
 
@@ -73,6 +112,7 @@ const REPO_PROP = {
 export const TOOLS: Tool[] = [
   {
     name: "nyuchi_whoami",
+    annotations: READ,
     description:
       "Verify the GitHub App credentials and report, for EVERY allowlisted repository, whether the App is installed there and whether that installation grants the permissions the scoped token asks for. Use this first when anything returns 422 or 404: a token mint requests the whole permission set in one call, so a single gap fails every tool on that repository, and a permission the App declares is not held until the installation owner accepts it.",
     inputSchema: {
@@ -84,7 +124,9 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "nyuchi_list_pull_requests",
-    description: "List pull requests, most recently updated first.",
+    annotations: READ,
+    description:
+      "List pull requests, most recently updated first. Returns {items, count, page, has_more, next_page} with each entry trimmed to number, title, state, draft, author, base, head, labels, timestamps and url — call nyuchi_get_pull_request for the rest.",
     inputSchema: {
       type: "object",
       properties: {
@@ -105,10 +147,12 @@ export const TOOLS: Tool[] = [
         str(a.repo, "repo"),
         typeof a.state === "string" ? a.state : "open",
         typeof a.limit === "number" ? Math.min(a.limit, 100) : 20,
+        typeof a.page === "number" ? Math.max(1, a.page) : 1,
       ),
   },
   {
     name: "nyuchi_get_pull_request",
+    annotations: READ,
     description:
       "One pull request in review-ready form: metadata, mergeability, the changed-file list, and a check-run rollup naming what is failing and what is still pending.",
     inputSchema: {
@@ -122,6 +166,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "nyuchi_get_pull_request_diff",
+    annotations: READ,
     description:
       "The unified diff for a pull request. This is the text to actually review; fetch it before writing a review rather than reasoning from the file list alone.",
     inputSchema: {
@@ -135,6 +180,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "nyuchi_create_review",
+    annotations: CREATE,
     description:
       "Submit a pull request review with an optional set of inline comments. Events are COMMENT or REQUEST_CHANGES only — this server refuses to approve pull requests, so a review from here never satisfies a branch protection review requirement.",
     inputSchema: {
@@ -174,6 +220,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "nyuchi_create_pull_request",
+    annotations: CREATE,
     description:
       "Open a pull request. Draft unless draft is explicitly false, so an agent-opened PR does not demand review attention before a human has looked at it.",
     inputSchema: {
@@ -200,6 +247,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "nyuchi_update_pull_request",
+    annotations: UPDATE,
     description:
       "Change a pull request's title, body, base branch, or state (open/closed). Cannot merge: the scoped token holds contents:read only.",
     inputSchema: {
@@ -231,8 +279,9 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "nyuchi_list_issues",
+    annotations: READ,
     description:
-      "List issues, most recently updated first. Note GitHub returns pull requests here too; entries carrying a pull_request field are PRs.",
+      "List issues, most recently updated first. Returns {items, count, page, has_more, next_page}; each entry carries is_pull_request because GitHub returns pull requests from this endpoint too.",
     inputSchema: {
       type: "object",
       properties: {
@@ -253,10 +302,12 @@ export const TOOLS: Tool[] = [
         str(a.repo, "repo"),
         typeof a.state === "string" ? a.state : "open",
         typeof a.limit === "number" ? Math.min(a.limit, 100) : 20,
+        typeof a.page === "number" ? Math.max(1, a.page) : 1,
       ),
   },
   {
     name: "nyuchi_get_issue",
+    annotations: READ,
     description: "One issue in full.",
     inputSchema: {
       type: "object",
@@ -269,6 +320,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "nyuchi_create_issue",
+    annotations: CREATE,
     description: "File an issue.",
     inputSchema: {
       type: "object",
@@ -292,6 +344,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "nyuchi_update_issue",
+    annotations: UPDATE,
     description: "Retitle, re-body, relabel, reassign, or open/close an issue.",
     inputSchema: {
       type: "object",
@@ -329,6 +382,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "nyuchi_comment",
+    annotations: CREATE,
     description:
       "Post a comment on an issue or a pull request (they share a numbering space and an endpoint).",
     inputSchema: {
@@ -411,6 +465,7 @@ export async function handleRpc(
           name: t.name,
           description: t.description,
           inputSchema: t.inputSchema,
+          annotations: t.annotations,
         })),
       });
     case "tools/call": {
