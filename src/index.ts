@@ -18,14 +18,42 @@ import {
   verifyWorkosToken,
 } from "./auth";
 import { handleRpc } from "./mcp";
+import {
+  HEADER_MISMATCH,
+  METHOD_NOT_FOUND,
+  UNSUPPORTED_PROTOCOL_VERSION,
+  detectEra,
+  originAllowed,
+  validateModernRequest,
+  type JsonRpcLike,
+} from "./protocol";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+  // Mcp-Method and Mcp-Name are the 2026-07-28 mirrored headers; without them
+  // listed here a browser-based client's preflight fails before the request
+  // this server is meant to validate ever arrives.
   "Access-Control-Allow-Headers":
-    "Authorization, Content-Type, Mcp-Session-Id, Mcp-Protocol-Version",
+    "Authorization, Content-Type, Mcp-Session-Id, Mcp-Protocol-Version, MCP-Protocol-Version, Mcp-Method, Mcp-Name",
   "Access-Control-Expose-Headers": "WWW-Authenticate",
 } as const;
+
+/** A JSON-RPC error response with the HTTP status the modern revision requires. */
+function rpcError(
+  id: unknown,
+  code: number,
+  message: string,
+  status: number,
+  data?: unknown,
+): Response {
+  const error: Record<string, unknown> = { code, message };
+  if (data !== undefined) error.data = data;
+  return new Response(
+    JSON.stringify({ jsonrpc: "2.0", id: id ?? null, error }),
+    { status, headers: { "Content-Type": "application/json", ...CORS } },
+  );
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -79,6 +107,19 @@ export default {
       return json({ error: "not found" }, 404);
     }
 
+    // Protocol-level sessions and the standalone GET stream were removed in
+    // 2026-07-28. A server that only speaks this revision answers GET and
+    // DELETE on the MCP endpoint with 405.
+    if (request.method === "GET" || request.method === "DELETE") {
+      return json({ error: "method not allowed" }, 405);
+    }
+
+    // Servers MUST validate Origin to prevent DNS rebinding. Absent Origin is
+    // allowed: non-browser MCP clients do not send one.
+    if (!originAllowed(request.headers.get("Origin"), resourceUrl(env))) {
+      return json({ error: "forbidden origin" }, 403);
+    }
+
     // WorkOS Connect: verify the caller's access token on every /mcp request.
     const header = request.headers.get("Authorization") || "";
     const token = header.startsWith("Bearer ") ? header.slice(7) : "";
@@ -118,16 +159,60 @@ export default {
       );
     }
 
-    try {
-      if (Array.isArray(payload)) {
+    // 2026-07-28 sends one JSON-RPC message per POST. Batches belong to the
+    // legacy revision, so they are answered but never version-validated.
+    if (Array.isArray(payload)) {
+      try {
         const responses = (
           await Promise.all(payload.map((m) => handleRpc(m, env)))
         ).filter((r): r is object => r !== null);
         return json(responses);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        const status = e instanceof GitHubError ? 502 : 500;
+        return rpcError(null, -32603, message, status);
       }
-      const response = await handleRpc(payload as never, env);
+    }
+
+    const body = payload as JsonRpcLike;
+    const era = detectEra(body);
+
+    // Modern requests mirror version, method and name into headers so
+    // intermediaries can route without parsing the body. Validating them here
+    // is what stops a proxy and this worker acting on different values.
+    if (era === "modern") {
+      const problem = validateModernRequest(request.headers, body);
+      if (problem) {
+        return rpcError(
+          body.id,
+          problem.code,
+          problem.message,
+          problem.status,
+          problem.data,
+        );
+      }
+    }
+
+    try {
+      const response = await handleRpc(body as never, env);
       if (response === null)
         return new Response(null, { status: 202, headers: CORS });
+
+      // An unknown method is 404 in the modern revision; the JSON-RPC body is
+      // what tells a client this is an MCP endpoint that lacks the method,
+      // rather than a URL that is not an MCP endpoint at all. Legacy clients
+      // keep getting 200, as their revision expects.
+      const rpcErr = (response as { error?: { code?: number } }).error;
+      if (era === "modern" && rpcErr?.code === METHOD_NOT_FOUND) {
+        return json(response, 404);
+      }
+      if (
+        era === "modern" &&
+        (rpcErr?.code === HEADER_MISMATCH ||
+          rpcErr?.code === UNSUPPORTED_PROTOCOL_VERSION)
+      ) {
+        return json(response, 400);
+      }
       return json(response);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
