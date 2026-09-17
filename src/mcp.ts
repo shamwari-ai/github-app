@@ -17,6 +17,7 @@ import {
   SUPPORTED_MODERN_VERSIONS,
 } from "./protocol";
 import {
+  GitHubError,
   createComment,
   createIssue,
   createPullRequest,
@@ -430,6 +431,38 @@ function err(id: unknown, code: number, message: string) {
  * era-specific — `initialize` (legacy) and `server/discover` (modern) — and
  * each is simply an unknown method to the other era's clients.
  */
+/**
+ * What a failed tools/call returns.
+ *
+ * A GitHubError message is written to be read by the caller — which
+ * repository, which permission, which status — so it passes through. Anything
+ * else is an unexpected throw whose message is internal detail: a stack
+ * fragment, a property name, an internal URL. Log it, return a generic
+ * string. This is the same rule index.ts applies on the transport path; the
+ * two error paths should not disagree about what a caller may see.
+ */
+export function toolError(name: string, e: unknown) {
+  if (e instanceof GitHubError) {
+    return {
+      content: [{ type: "text", text: `Error: ${e.message}` }],
+      isError: true,
+    };
+  }
+  console.error(
+    `tools/call ${name} failed:`,
+    e instanceof Error ? (e.stack ?? e.message) : String(e),
+  );
+  return {
+    content: [
+      {
+        type: "text",
+        text: "Error: internal error. The cause is in the worker log, not in the arguments — the same call will fail the same way.",
+      },
+    ],
+    isError: true,
+  };
+}
+
 export async function handleRpc(
   req: JsonRpcRequest,
   env: Env,
@@ -479,11 +512,7 @@ export async function handleRpc(
           typeof result === "string" ? result : JSON.stringify(result, null, 2);
         return ok(req.id, { content: [{ type: "text", text }] });
       } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        return ok(req.id, {
-          content: [{ type: "text", text: `Error: ${message}` }],
-          isError: true,
-        });
+        return ok(req.id, toolError(name, e));
       }
     }
     default:
