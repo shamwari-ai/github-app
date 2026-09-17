@@ -90,11 +90,16 @@ WORKOS_REQUIRED_PERMISSIONS = "mongodb:access"
 # the Nyuchi Africa org). Until then WorkOS will not mint a token scoped to
 # this resource. /mcp stays locked while WORKOS_ISSUER is unset.
 
-# Worker observability. Invocation logs on, full sampling, traces off.
-[observability]
-enabled = true
-
+# Worker observability. Mirrors what is configured on the deployed worker, so
+# a `wrangler deploy` reproduces it rather than overwriting it — the same trap
+# as [vars], which deploy replaces wholesale.
 [observability.logs]
 enabled = true
 head_sampling_rate = 1
 invocation_logs = true
+persist = true
+
+[observability.traces]
+enabled = false
+head_sampling_rate = 1
+persist = true
