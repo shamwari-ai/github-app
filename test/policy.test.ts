@@ -170,3 +170,142 @@ test("the metadata advertises no scopes", () => {
   assert.deepEqual(meta.authorization_servers, ["https://accounts.mukoko.com"]);
   assert.equal(meta.resource, "https://github.nyuchi.dev/mcp");
 });
+
+// --- tool annotations -----------------------------------------------------
+//
+// Hints, not enforcement — the real guarantees are the scoped token and
+// createReview refusing APPROVE. But a client uses them to show which tools
+// write before calling one, so a read tool mislabelled as a write (or worse,
+// the reverse) misleads exactly when it matters.
+
+test("every tool carries a full set of annotations", async () => {
+  const { TOOLS } = await import("../src/mcp");
+  for (const t of TOOLS) {
+    assert.ok(t.annotations, `${t.name} has no annotations`);
+    for (const k of [
+      "readOnlyHint",
+      "destructiveHint",
+      "idempotentHint",
+      "openWorldHint",
+    ] as const) {
+      assert.equal(
+        typeof t.annotations[k],
+        "boolean",
+        `${t.name}.${k} is not a boolean`,
+      );
+    }
+  }
+});
+
+test("the read tools are the ones that read, and nothing else", async () => {
+  const { TOOLS } = await import("../src/mcp");
+  const readOnly = TOOLS.filter((t) => t.annotations.readOnlyHint)
+    .map((t) => t.name)
+    .sort();
+  assert.deepEqual(readOnly, [
+    "nyuchi_get_issue",
+    "nyuchi_get_pull_request",
+    "nyuchi_get_pull_request_diff",
+    "nyuchi_list_issues",
+    "nyuchi_list_pull_requests",
+    "nyuchi_whoami",
+  ]);
+});
+
+test("no read-only tool is marked destructive, and no writer is marked read-only", async () => {
+  const { TOOLS } = await import("../src/mcp");
+  for (const t of TOOLS) {
+    if (t.annotations.readOnlyHint) {
+      assert.equal(t.annotations.destructiveHint, false, `${t.name}`);
+    }
+  }
+  // The update tools overwrite existing fields; the create tools add.
+  const updates = TOOLS.filter((t) => t.annotations.destructiveHint).map(
+    (t) => t.name,
+  );
+  assert.deepEqual(updates.sort(), [
+    "nyuchi_update_issue",
+    "nyuchi_update_pull_request",
+  ]);
+});
+
+test("tools/list advertises the annotations, not just the schema", async () => {
+  const { handleRpc } = await import("../src/mcp");
+  const res = (await handleRpc(
+    { jsonrpc: "2.0", id: 1, method: "tools/list" } as never,
+    {} as Env,
+  )) as { result: { tools: Array<Record<string, unknown>> } };
+  assert.ok(res.result.tools.every((t) => t.annotations));
+});
+
+// --- list output shaping --------------------------------------------------
+//
+// The list tools used to return raw GitHub objects. Measured on this
+// repository, thirteen pull requests serialised to 276,801 bytes against
+// 3,842 shaped — 99% of it structure nothing reads (_links, a full repository
+// object per row, the author object repeated). That is context an agent
+// cannot spend twice, so the shaping is pinned here.
+
+test("paginate reports another page only when one exists", async () => {
+  const { paginate } = await import("../src/github");
+  // Callers fetch limit+1; the extra row is the signal, not part of the page.
+  const over = paginate([1, 2, 3, 4], 3, 1);
+  assert.deepEqual(over.items, [1, 2, 3]);
+  assert.equal(over.count, 3);
+  assert.equal(over.has_more, true);
+  assert.equal(over.next_page, 2);
+
+  const exact = paginate([1, 2, 3], 3, 1);
+  assert.equal(exact.has_more, false);
+  assert.equal(exact.next_page, undefined);
+
+  const empty = paginate([], 20, 1);
+  assert.deepEqual(empty.items, []);
+  assert.equal(empty.has_more, false);
+});
+
+test("paginate carries the page number through", async () => {
+  const { paginate } = await import("../src/github");
+  assert.equal(paginate([1, 2], 1, 4).next_page, 5);
+});
+
+test("slimPull keeps what a reviewer needs and drops the rest", async () => {
+  const { slimPull } = await import("../src/github");
+  const raw = {
+    number: 12,
+    title: "dual-era MCP",
+    state: "open",
+    draft: false,
+    user: { login: "bryanfawcett", id: 1, avatar_url: "…", node_id: "…" },
+    base: { ref: "main", repo: { id: 1, owner: {}, permissions: {} } },
+    head: { ref: "feat/x", repo: { id: 1, owner: {}, permissions: {} } },
+    labels: [{ name: "enhancement", color: "fff", id: 9 }],
+    created_at: "2026-09-17T18:00:00Z",
+    updated_at: "2026-09-17T19:00:00Z",
+    html_url: "https://github.com/nyuchi/web-services/pull/12",
+    _links: { self: {}, html: {}, comments: {} },
+    body: "x".repeat(5000),
+  };
+  const slim = slimPull(raw);
+  assert.equal(slim.number, 12);
+  assert.equal(slim.author, "bryanfawcett");
+  assert.equal(slim.base, "main");
+  assert.equal(slim.head, "feat/x");
+  assert.deepEqual(slim.labels, ["enhancement"]);
+  // The expensive parts must not survive.
+  for (const k of ["_links", "body", "user"]) {
+    assert.equal(k in slim, false, `${k} should not be in the slim shape`);
+  }
+  assert.ok(JSON.stringify(slim).length < JSON.stringify(raw).length / 5);
+});
+
+test("slimIssue flags pull requests returned by the issues endpoint", async () => {
+  const { slimIssue } = await import("../src/github");
+  // GitHub returns PRs from /issues. A caller that misses this counts them
+  // as issues, which is wrong in both directions.
+  assert.equal(
+    slimIssue({ number: 1, pull_request: { url: "…" } }).is_pull_request,
+    true,
+  );
+  assert.equal(slimIssue({ number: 2 }).is_pull_request, false);
+});
