@@ -93,7 +93,7 @@ test("an unrecognised review event is refused", async () => {
 
 // --- missingPermissions --------------------------------------------------
 //
-// This decides whether github_whoami reports a repository as ready. Its whole
+// This decides whether nyuchi_whoami reports a repository as ready. Its whole
 // value is being trusted when a 422 appears, so the read/write asymmetry gets
 // pinned rather than assumed.
 

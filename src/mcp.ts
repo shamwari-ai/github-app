@@ -72,7 +72,7 @@ const REPO_PROP = {
 
 export const TOOLS: Tool[] = [
   {
-    name: "github_whoami",
+    name: "nyuchi_whoami",
     description:
       "Verify the GitHub App credentials and report, for EVERY allowlisted repository, whether the App is installed there and whether that installation grants the permissions the scoped token asks for. Use this first when anything returns 422 or 404: a token mint requests the whole permission set in one call, so a single gap fails every tool on that repository, and a permission the App declares is not held until the installation owner accepts it.",
     inputSchema: {
@@ -83,7 +83,7 @@ export const TOOLS: Tool[] = [
     handler: (env) => whoami(env),
   },
   {
-    name: "github_list_pull_requests",
+    name: "nyuchi_list_pull_requests",
     description: "List pull requests, most recently updated first.",
     inputSchema: {
       type: "object",
@@ -108,7 +108,7 @@ export const TOOLS: Tool[] = [
       ),
   },
   {
-    name: "github_get_pull_request",
+    name: "nyuchi_get_pull_request",
     description:
       "One pull request in review-ready form: metadata, mergeability, the changed-file list, and a check-run rollup naming what is failing and what is still pending.",
     inputSchema: {
@@ -121,7 +121,7 @@ export const TOOLS: Tool[] = [
       getPullRequest(env, str(a.repo, "repo"), num(a.number, "number")),
   },
   {
-    name: "github_get_pull_request_diff",
+    name: "nyuchi_get_pull_request_diff",
     description:
       "The unified diff for a pull request. This is the text to actually review; fetch it before writing a review rather than reasoning from the file list alone.",
     inputSchema: {
@@ -134,7 +134,7 @@ export const TOOLS: Tool[] = [
       getPullRequestDiff(env, str(a.repo, "repo"), num(a.number, "number")),
   },
   {
-    name: "github_create_review",
+    name: "nyuchi_create_review",
     description:
       "Submit a pull request review with an optional set of inline comments. Events are COMMENT or REQUEST_CHANGES only — this server refuses to approve pull requests, so a review from here never satisfies a branch protection review requirement.",
     inputSchema: {
@@ -173,7 +173,7 @@ export const TOOLS: Tool[] = [
       }),
   },
   {
-    name: "github_create_pull_request",
+    name: "nyuchi_create_pull_request",
     description:
       "Open a pull request. Draft unless draft is explicitly false, so an agent-opened PR does not demand review attention before a human has looked at it.",
     inputSchema: {
@@ -199,7 +199,7 @@ export const TOOLS: Tool[] = [
       }),
   },
   {
-    name: "github_update_pull_request",
+    name: "nyuchi_update_pull_request",
     description:
       "Change a pull request's title, body, base branch, or state (open/closed). Cannot merge: the scoped token holds contents:read only.",
     inputSchema: {
@@ -230,7 +230,7 @@ export const TOOLS: Tool[] = [
     },
   },
   {
-    name: "github_list_issues",
+    name: "nyuchi_list_issues",
     description:
       "List issues, most recently updated first. Note GitHub returns pull requests here too; entries carrying a pull_request field are PRs.",
     inputSchema: {
@@ -256,7 +256,7 @@ export const TOOLS: Tool[] = [
       ),
   },
   {
-    name: "github_get_issue",
+    name: "nyuchi_get_issue",
     description: "One issue in full.",
     inputSchema: {
       type: "object",
@@ -268,7 +268,7 @@ export const TOOLS: Tool[] = [
       getIssue(env, str(a.repo, "repo"), num(a.number, "number")),
   },
   {
-    name: "github_create_issue",
+    name: "nyuchi_create_issue",
     description: "File an issue.",
     inputSchema: {
       type: "object",
@@ -291,7 +291,7 @@ export const TOOLS: Tool[] = [
       }),
   },
   {
-    name: "github_update_issue",
+    name: "nyuchi_update_issue",
     description: "Retitle, re-body, relabel, reassign, or open/close an issue.",
     inputSchema: {
       type: "object",
@@ -328,7 +328,7 @@ export const TOOLS: Tool[] = [
     },
   },
   {
-    name: "github_comment",
+    name: "nyuchi_comment",
     description:
       "Post a comment on an issue or a pull request (they share a numbering space and an endpoint).",
     inputSchema: {
@@ -398,7 +398,7 @@ export async function handleRpc(
         capabilities: { tools: {} },
         _meta: { [META_SERVER_INFO]: SERVER_INFO },
         instructions:
-          "GitHub review, pull request and issue operations for allowlisted Nyuchi repositories. Call github_whoami first: it reports, per repository, whether the App is installed and whether that installation grants the permissions the scoped token requests.",
+          "GitHub review, pull request and issue operations for allowlisted Nyuchi repositories. Call nyuchi_whoami first: it reports, per repository, whether the App is installed and whether that installation grants the permissions the scoped token requests.",
       });
     case "notifications/initialized":
     case "notifications/cancelled":
