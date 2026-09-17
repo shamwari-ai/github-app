@@ -11,6 +11,12 @@
 
 import type { Env } from "./env";
 import {
+  LEGACY_VERSION,
+  META_SERVER_INFO,
+  METHOD_NOT_FOUND,
+  SUPPORTED_MODERN_VERSIONS,
+} from "./protocol";
+import {
   createComment,
   createIssue,
   createPullRequest,
@@ -25,7 +31,15 @@ import {
   whoami,
 } from "./github";
 
-export const PROTOCOL_VERSION = "2025-06-18";
+/**
+ * The version reported in an `initialize` result.
+ *
+ * This is the LEGACY revision, and deliberately so: only a legacy client sends
+ * `initialize`, and answering it with the modern revision would tell that
+ * client to speak a protocol it cannot. Modern clients learn the version from
+ * `server/discover` or simply declare it per request.
+ */
+export const PROTOCOL_VERSION = LEGACY_VERSION;
 
 export const SERVER_INFO = {
   name: "nyuchi-github-mcp",
@@ -354,17 +368,37 @@ function err(id: unknown, code: number, message: string) {
   return { jsonrpc: "2.0", id: id ?? null, error: { code, message } };
 }
 
-/** Handle a single JSON-RPC message. Returns null for notifications. */
+/**
+ * Handle a single JSON-RPC message. Returns null for notifications.
+ *
+ * Era-independent: version negotiation happens in index.ts before this is
+ * called, and both eras dispatch the same tools. Only two methods are
+ * era-specific — `initialize` (legacy) and `server/discover` (modern) — and
+ * each is simply an unknown method to the other era's clients.
+ */
 export async function handleRpc(
   req: JsonRpcRequest,
   env: Env,
 ): Promise<object | null> {
   switch (req.method) {
     case "initialize":
+      // Legacy handshake. Modern clients never send this.
       return ok(req.id, {
         protocolVersion: PROTOCOL_VERSION,
         capabilities: { tools: {} },
         serverInfo: SERVER_INFO,
+      });
+    case "server/discover":
+      // Modern. Servers MUST implement it: one request returns the supported
+      // versions, capabilities and identity a client would otherwise have to
+      // probe for.
+      return ok(req.id, {
+        resultType: "complete",
+        supportedVersions: [...SUPPORTED_MODERN_VERSIONS],
+        capabilities: { tools: {} },
+        _meta: { [META_SERVER_INFO]: SERVER_INFO },
+        instructions:
+          "GitHub review, pull request and issue operations for allowlisted Nyuchi repositories. Call github_whoami first: it reports, per repository, whether the App is installed and whether that installation grants the permissions the scoped token requests.",
       });
     case "notifications/initialized":
     case "notifications/cancelled":
@@ -398,6 +432,9 @@ export async function handleRpc(
       }
     }
     default:
-      return err(req.id, -32601, `method not found: ${req.method}`);
+      // In the modern revision this maps to HTTP 404 (see index.ts); the
+      // JSON-RPC body is what distinguishes it from a 404 served by something
+      // that is not an MCP endpoint at all.
+      return err(req.id, METHOD_NOT_FOUND, `method not found: ${req.method}`);
   }
 }
