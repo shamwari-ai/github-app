@@ -228,6 +228,17 @@ export function protectedResourceMetadata(env: Env): Record<string, unknown> {
       env.WORKOS_AUTHORIZATION_SERVER || "https://api.workos.com",
     ],
     bearer_methods_supported: ["header"],
-    scopes_supported: ["github:read", "github:review", "github:write"],
+    // NO scopes_supported, deliberately.
+    //
+    // It is optional in RFC 9728, and advertising a scope the authorization
+    // server does not define is worse than advertising none: a client reads
+    // this document, asks WorkOS for those scopes, and WorkOS answers
+    // `error=invalid_scope` straight back to the client's callback — so the
+    // user never even reaches a login page, and the failure surfaces nowhere
+    // near this file.
+    //
+    // This worker gates on organization, role and permission claims, not on
+    // scopes, so it has nothing to advertise here. Do not add a scope unless
+    // it exists in WorkOS and this worker actually checks it.
   };
 }
