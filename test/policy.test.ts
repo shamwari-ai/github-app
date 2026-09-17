@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Env } from "../src/env";
-import { createReview, resolveRepo } from "../src/github";
+import { createReview, missingPermissions, resolveRepo } from "../src/github";
 
 const env = (over: Partial<Env> = {}): Env =>
   ({
@@ -87,5 +87,64 @@ test("an unrecognised review event is refused", async () => {
       body: "x",
     }),
     /unsupported review event/,
+  );
+});
+
+// --- missingPermissions --------------------------------------------------
+//
+// This decides whether github_whoami reports a repository as ready. Its whole
+// value is being trusted when a 422 appears, so the read/write asymmetry gets
+// pinned rather than assumed.
+
+test("a permission the installation does not hold at all is missing", () => {
+  assert.deepEqual(
+    missingPermissions(
+      { pull_requests: "write", issues: "write" },
+      { pull_requests: "write" },
+    ),
+    ["issues:write"],
+  );
+});
+
+test("write satisfies a read request", () => {
+  assert.deepEqual(
+    missingPermissions({ contents: "read" }, { contents: "write" }),
+    [],
+  );
+});
+
+test("read does not satisfy a write request", () => {
+  assert.deepEqual(
+    missingPermissions({ issues: "write" }, { issues: "read" }),
+    ["issues:write"],
+  );
+});
+
+test("an exact match is not missing", () => {
+  assert.deepEqual(
+    missingPermissions(
+      { pull_requests: "write", contents: "read", metadata: "read" },
+      { pull_requests: "write", contents: "read", metadata: "read" },
+    ),
+    [],
+  );
+});
+
+test("extra permissions the installation holds are not reported", () => {
+  // The App is broader than the token asks for by design — that is the whole
+  // point of the scoped mint, so surplus must never read as a problem.
+  assert.deepEqual(
+    missingPermissions(
+      { contents: "read" },
+      { contents: "write", workflows: "write", administration: "write" },
+    ),
+    [],
+  );
+});
+
+test("an empty installation misses everything requested", () => {
+  assert.deepEqual(
+    missingPermissions({ pull_requests: "write", issues: "write" }, {}),
+    ["pull_requests:write", "issues:write"],
   );
 });
