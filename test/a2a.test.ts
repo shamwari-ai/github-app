@@ -173,3 +173,51 @@ test("an unknown method is a JSON-RPC error that says what is served", async () 
   // let a client conclude its task was lost.
   assert.match(res.error.message, /terminal|SendMessage/);
 });
+
+// --- the regexes run on input from whoever holds a token ------------------
+//
+// CodeQL flagged both of these as polynomial backtracking. The text comes
+// from an A2A message, so it is attacker-controlled: an unbounded
+// `[\w.-]+\/[\w.-]+` scans quadratically over a long run of dashes that never
+// reaches a slash. The quantifiers are bounded to GitHub's own limits (owner
+// 39, repo 100) and the text is capped before matching.
+
+test("a pathological input does not hang the extractor", () => {
+  // 100k dashes with no slash: the shape that makes an unbounded pattern
+  // backtrack. Bounded, this returns immediately.
+  const evil = "-".repeat(100_000);
+  const started = Date.now();
+  const t = extractTarget({ message: { parts: [{ text: evil }] } });
+  const ms = Date.now() - started;
+  assert.ok(t.error, "should find no pull request");
+  assert.ok(ms < 1000, `took ${ms}ms — the bound is not holding`);
+});
+
+test("the near-miss shape is fast too", () => {
+  // Many dashes, then a slash, then many more: worse for a naive pattern
+  // because the prefix can match in many ways before failing.
+  const evil = `${"-".repeat(50_000)}/${"-".repeat(50_000)}`;
+  const started = Date.now();
+  extractTarget({ message: { parts: [{ text: evil }] } });
+  const ms = Date.now() - started;
+  assert.ok(ms < 1000, `took ${ms}ms — the bound is not holding`);
+});
+
+test("bounding the input did not break ordinary references", () => {
+  // The fix must not cost the feature. A reference after some preamble still
+  // resolves, and one past the 2KB cap is simply not found rather than
+  // scanned for.
+  const near = extractTarget({
+    message: {
+      parts: [{ text: `${"word ".repeat(50)}nyuchi/web-services#18` }],
+    },
+  });
+  assert.deepEqual([near.repo, near.number], ["nyuchi/web-services", 18]);
+
+  const far = extractTarget({
+    message: {
+      parts: [{ text: `${"x".repeat(3000)} nyuchi/web-services#18` }],
+    },
+  });
+  assert.ok(far.error);
+});
