@@ -93,7 +93,7 @@ test("an unrecognised review event is refused", async () => {
 
 // --- missingPermissions --------------------------------------------------
 //
-// This decides whether nyuchi_whoami reports a repository as ready. Its whole
+// This decides whether shamwari_whoami reports a repository as ready. Its whole
 // value is being trusted when a 422 appears, so the read/write asymmetry gets
 // pinned rather than assumed.
 
@@ -163,12 +163,12 @@ test("the metadata advertises no scopes", () => {
   //   scope=openid profile email   -> 302 to the AuthKit login page
   //   scope=github:read            -> 302 ?error=invalid_scope
   const meta = protectedResourceMetadata({
-    MCP_RESOURCE_URL: "https://github.nyuchi.dev/mcp",
+    MCP_RESOURCE_URL: "https://github.shamwari.ai/mcp",
     WORKOS_AUTHORIZATION_SERVER: "https://accounts.mukoko.com",
   } as Env);
   assert.equal("scopes_supported" in meta, false);
   assert.deepEqual(meta.authorization_servers, ["https://accounts.mukoko.com"]);
-  assert.equal(meta.resource, "https://github.nyuchi.dev/mcp");
+  assert.equal(meta.resource, "https://github.shamwari.ai/mcp");
 });
 
 // --- tool annotations -----------------------------------------------------
@@ -203,12 +203,12 @@ test("the read tools are the ones that read, and nothing else", async () => {
     .map((t) => t.name)
     .sort();
   assert.deepEqual(readOnly, [
-    "nyuchi_get_issue",
-    "nyuchi_get_pull_request",
-    "nyuchi_get_pull_request_diff",
-    "nyuchi_list_issues",
-    "nyuchi_list_pull_requests",
-    "nyuchi_whoami",
+    "shamwari_get_issue",
+    "shamwari_get_pull_request",
+    "shamwari_get_pull_request_diff",
+    "shamwari_list_issues",
+    "shamwari_list_pull_requests",
+    "shamwari_whoami",
   ]);
 });
 
@@ -224,8 +224,8 @@ test("no read-only tool is marked destructive, and no writer is marked read-only
     (t) => t.name,
   );
   assert.deepEqual(updates.sort(), [
-    "nyuchi_update_issue",
-    "nyuchi_update_pull_request",
+    "shamwari_update_issue",
+    "shamwari_update_pull_request",
   ]);
 });
 
@@ -323,7 +323,7 @@ test("a GitHubError reaches the caller — it is the actionable one", async () =
   const { toolError } = await import("../src/mcp");
   const { GitHubError } = await import("../src/github");
   const res = toolError(
-    "nyuchi_get_pull_request",
+    "shamwari_get_pull_request",
     new GitHubError("nyuchi/web-services: App not installed", 404, null),
   );
   assert.equal(res.isError, true);
@@ -333,7 +333,7 @@ test("a GitHubError reaches the caller — it is the actionable one", async () =
 test("any other throw does not, however tempting the message", async () => {
   const { toolError } = await import("../src/mcp");
   const res = toolError(
-    "nyuchi_get_pull_request",
+    "shamwari_get_pull_request",
     new TypeError("Cannot read properties of undefined (reading 'secret')"),
   );
   assert.equal(res.isError, true);
@@ -343,14 +343,14 @@ test("any other throw does not, however tempting the message", async () => {
 
 test("a thrown non-Error is not stringified into the response either", async () => {
   const { toolError } = await import("../src/mcp");
-  const res = toolError("nyuchi_comment", { token: "ghs_leaked" });
+  const res = toolError("shamwari_comment", { token: "ghs_leaked" });
   assert.doesNotMatch(res.content[0].text, /ghs_/);
 });
 
 test("an argument error names the field so the caller can fix the call", async () => {
   const { toolError, ArgumentError } = await import("../src/mcp");
   const res = toolError(
-    "nyuchi_get_pull_request",
+    "shamwari_get_pull_request",
     new ArgumentError('missing or invalid "number": expected a number'),
   );
   assert.equal(res.isError, true);
@@ -365,7 +365,7 @@ test("a bad argument reaches the caller through tools/call, not a stub", async (
       id: 1,
       method: "tools/call",
       params: {
-        name: "nyuchi_get_pull_request",
+        name: "shamwari_get_pull_request",
         arguments: { repo: "nyuchi/web-services", number: "twelve" },
       },
     } as never,

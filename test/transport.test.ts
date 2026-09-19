@@ -16,7 +16,7 @@ import type { Env } from "../src/env";
 import { MODERN_VERSION, LEGACY_VERSION } from "../src/protocol";
 
 const ISSUER = "https://accounts.mukoko.com";
-const AUDIENCE = "https://github.nyuchi.dev/mcp";
+const AUDIENCE = "https://github.shamwari.ai/mcp";
 const JWKS_URL = "https://accounts.mukoko.com/oauth2/jwks";
 const ORG = "org_01KRDAB894DJF5V38PT5617TV1";
 const META = "io.modelcontextprotocol/protocolVersion";
@@ -100,7 +100,7 @@ async function call(
   headers: Record<string, string> = {},
   method = "POST",
 ) {
-  const req = new Request("https://github.nyuchi.dev/mcp", {
+  const req = new Request("https://github.shamwari.ai/mcp", {
     method,
     headers: {
       "Content-Type": "application/json",
@@ -148,7 +148,7 @@ test("a foreign Origin is refused with 403", async () => {
 test("the resource's own Origin is allowed", async () => {
   const r = await call(modern("server/discover"), {
     ...modernHeaders("server/discover"),
-    Origin: "https://github.nyuchi.dev",
+    Origin: "https://github.shamwari.ai",
   });
   assert.equal(r.status, 200);
 });
@@ -237,7 +237,7 @@ test("an unknown method stays 200 for a legacy client", async () => {
 // --- auth still gates everything ------------------------------------------
 
 test("no bearer token is still 401, whatever the era", async () => {
-  const req = new Request("https://github.nyuchi.dev/mcp", {
+  const req = new Request("https://github.shamwari.ai/mcp", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
