@@ -1,4 +1,4 @@
-// Environment bindings for nyuchi-github-mcp.
+// Environment bindings for shamwari-github-mcp.
 //
 // Secrets are set with `wrangler secret put <NAME>` and never committed.
 // Everything else lives in wrangler.toml [vars] so the authorization policy
