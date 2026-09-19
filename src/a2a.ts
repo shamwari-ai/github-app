@@ -141,15 +141,28 @@ export function extractTarget(params: Record<string, unknown>): {
   const text = parts
     .map((p) => (p as Record<string, unknown>).text)
     .filter((t): t is string => typeof t === "string")
-    .join(" ");
+    .join(" ")
+    // Bounded before any matching. A reference to a pull request that needs
+    // more than 2KB of preamble is not one, and nothing should be scanning a
+    // multi-megabyte part to find out.
+    .slice(0, 2048);
   if (!text.trim()) {
     return { error: "message has no text or data part naming a pull request" };
   }
 
-  // owner/repo#N, or owner/repo followed by a number somewhere after it.
-  const hash = text.match(/([\w.-]+\/[\w.-]+)#(\d+)/);
+  // Every quantifier below is BOUNDED, and the bounds are GitHub's own: an
+  // owner is at most 39 characters and a repository at most 100. Unbounded
+  // `[\w.-]+\/[\w.-]+` backtracks polynomially on a long run of dashes that
+  // never reaches a slash — and this text arrives in an A2A message, so it is
+  // input from whoever holds a token, not from us. CodeQL caught exactly
+  // that; the bounds are what make the worst case uninteresting.
+  const hash = text.match(
+    /([A-Za-z0-9._-]{1,39}\/[A-Za-z0-9._-]{1,100})#(\d{1,10})/,
+  );
   if (hash) return { repo: hash[1], number: Number(hash[2]) };
-  const loose = text.match(/([\w.-]+\/[\w.-]+)\D+(\d+)/);
+  const loose = text.match(
+    /([A-Za-z0-9._-]{1,39}\/[A-Za-z0-9._-]{1,100})\D{1,32}(\d{1,10})/,
+  );
   if (loose) return { repo: loose[1], number: Number(loose[2]) };
 
   return {
