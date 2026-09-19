@@ -181,6 +181,44 @@ treating a missing value as "skip that check" — an unset audience would
 otherwise let a token minted for any other MCP resource in the same WorkOS
 environment be spent here. `test/auth.test.ts` pins that.
 
+## Agents, not just people
+
+WorkOS **Agent Auth** tokens are signed by the same issuer and JWKS as AuthKit
+user tokens, so they clear signature, issuer, audience and the organization
+gate with no change at all. The one place they differed was the permission
+gate, which read only `role` / `roles` / `permissions`:
+
+| Token from                 | Carries                                 |
+| -------------------------- | --------------------------------------- |
+| an AuthKit user signing in | `role` / `roles`                        |
+| a third-party Connect app  | `permissions` (array)                   |
+| **a WorkOS agent**         | **`scope`** (space-separated, RFC 6749) |
+
+An agent therefore authenticated perfectly and was then refused for holding no
+permission — indistinguishable, in the log, from an agent that genuinely held
+none. All three are now read.
+
+`scope` is split on spaces. Reading it whole matches nothing and produces
+exactly that same misleading refusal.
+
+### Who is calling
+
+Every accepted request logs `callerIdentity()`:
+
+```json
+{ "subject": "agent_reg_01ABC", "on_behalf_of": "user_01XYZ", "org": "org_1" }
+```
+
+`on_behalf_of` comes from `act`, the RFC 8693 delegation claim, and is present
+only once a claim ceremony has bound the agent to a person. An autonomous
+agent has none, and **that absence is itself the fact worth recording** — "an
+agent did this" and "an agent did this _for someone_" are different answers to
+the question asked after something goes wrong.
+
+Accepting `scope` widens the gate for agents only. A person with neither role
+nor permission is still refused, and there is a test that fails if that stops
+being true.
+
 ## Protocol: dual-era
 
 This server speaks two MCP revisions on one endpoint, which the spec

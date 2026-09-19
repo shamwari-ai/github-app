@@ -13,6 +13,7 @@ import type { Env } from "./env";
 import { GitHubError } from "./github";
 import {
   AuthError,
+  callerIdentity,
   protectedResourceMetadata,
   resourceUrl,
   verifyWorkosToken,
@@ -165,7 +166,20 @@ export default {
       return unauthorized(env, "missing bearer token");
     }
     try {
-      await verifyWorkosToken(token, env);
+      const claims = await verifyWorkosToken(token, env);
+      // Logged on every accepted call, because "an agent did this" and "an
+      // agent did this FOR someone" are different answers to the question
+      // asked after something goes wrong, and the token is the only place
+      // that distinction exists.
+      const who = callerIdentity(claims as Record<string, unknown>);
+      console.log(
+        `authorized ${who.kind}`,
+        JSON.stringify({
+          subject: who.subject,
+          on_behalf_of: who.onBehalfOf,
+          org: who.org,
+        }),
+      );
     } catch (e) {
       const message = e instanceof AuthError ? e.message : "unauthorized";
       const detail = e instanceof AuthError ? e.detail : undefined;
