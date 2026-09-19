@@ -44,7 +44,7 @@ import {
 export const PROTOCOL_VERSION = LEGACY_VERSION;
 
 export const SERVER_INFO = {
-  name: "nyuchi-github-mcp",
+  name: "shamwari-github-mcp",
   version: "0.1.0",
 } as const;
 
@@ -130,7 +130,7 @@ const REPO_PROP = {
 
 export const TOOLS: Tool[] = [
   {
-    name: "nyuchi_whoami",
+    name: "shamwari_whoami",
     annotations: READ,
     description:
       "Verify the GitHub App credentials and report, for EVERY allowlisted repository, whether the App is installed there and whether that installation grants the permissions the scoped token asks for. Use this first when anything returns 422 or 404: a token mint requests the whole permission set in one call, so a single gap fails every tool on that repository, and a permission the App declares is not held until the installation owner accepts it.",
@@ -142,10 +142,10 @@ export const TOOLS: Tool[] = [
     handler: (env) => whoami(env),
   },
   {
-    name: "nyuchi_list_pull_requests",
+    name: "shamwari_list_pull_requests",
     annotations: READ,
     description:
-      "List pull requests, most recently updated first. Returns {items, count, page, has_more, next_page} with each entry trimmed to number, title, state, draft, author, base, head, labels, timestamps and url — call nyuchi_get_pull_request for the rest.",
+      "List pull requests, most recently updated first. Returns {items, count, page, has_more, next_page} with each entry trimmed to number, title, state, draft, author, base, head, labels, timestamps and url — call shamwari_get_pull_request for the rest.",
     inputSchema: {
       type: "object",
       properties: {
@@ -170,7 +170,7 @@ export const TOOLS: Tool[] = [
       ),
   },
   {
-    name: "nyuchi_get_pull_request",
+    name: "shamwari_get_pull_request",
     annotations: READ,
     description:
       "One pull request in review-ready form: metadata, mergeability, the changed-file list, and a check-run rollup naming what is failing and what is still pending.",
@@ -184,7 +184,7 @@ export const TOOLS: Tool[] = [
       getPullRequest(env, str(a.repo, "repo"), num(a.number, "number")),
   },
   {
-    name: "nyuchi_get_pull_request_diff",
+    name: "shamwari_get_pull_request_diff",
     annotations: READ,
     description:
       "The unified diff for a pull request. This is the text to actually review; fetch it before writing a review rather than reasoning from the file list alone.",
@@ -198,7 +198,7 @@ export const TOOLS: Tool[] = [
       getPullRequestDiff(env, str(a.repo, "repo"), num(a.number, "number")),
   },
   {
-    name: "nyuchi_create_review",
+    name: "shamwari_create_review",
     annotations: CREATE,
     description:
       "Submit a pull request review with an optional set of inline comments. Events are COMMENT or REQUEST_CHANGES only — this server refuses to approve pull requests, so a review from here never satisfies a branch protection review requirement.",
@@ -238,7 +238,7 @@ export const TOOLS: Tool[] = [
       }),
   },
   {
-    name: "nyuchi_create_pull_request",
+    name: "shamwari_create_pull_request",
     annotations: CREATE,
     description:
       "Open a pull request. Draft unless draft is explicitly false, so an agent-opened PR does not demand review attention before a human has looked at it.",
@@ -265,7 +265,7 @@ export const TOOLS: Tool[] = [
       }),
   },
   {
-    name: "nyuchi_update_pull_request",
+    name: "shamwari_update_pull_request",
     annotations: UPDATE,
     description:
       "Change a pull request's title, body, base branch, or state (open/closed). Cannot merge: the scoped token holds contents:read only.",
@@ -300,7 +300,7 @@ export const TOOLS: Tool[] = [
     },
   },
   {
-    name: "nyuchi_list_issues",
+    name: "shamwari_list_issues",
     annotations: READ,
     description:
       "List issues, most recently updated first. Returns {items, count, page, has_more, next_page}; each entry carries is_pull_request because GitHub returns pull requests from this endpoint too.",
@@ -328,7 +328,7 @@ export const TOOLS: Tool[] = [
       ),
   },
   {
-    name: "nyuchi_get_issue",
+    name: "shamwari_get_issue",
     annotations: READ,
     description: "One issue in full.",
     inputSchema: {
@@ -341,7 +341,7 @@ export const TOOLS: Tool[] = [
       getIssue(env, str(a.repo, "repo"), num(a.number, "number")),
   },
   {
-    name: "nyuchi_create_issue",
+    name: "shamwari_create_issue",
     annotations: CREATE,
     description: "File an issue.",
     inputSchema: {
@@ -365,7 +365,7 @@ export const TOOLS: Tool[] = [
       }),
   },
   {
-    name: "nyuchi_update_issue",
+    name: "shamwari_update_issue",
     annotations: UPDATE,
     description: "Retitle, re-body, relabel, reassign, or open/close an issue.",
     inputSchema: {
@@ -406,7 +406,7 @@ export const TOOLS: Tool[] = [
     },
   },
   {
-    name: "nyuchi_comment",
+    name: "shamwari_comment",
     annotations: CREATE,
     description:
       "Post a comment on an issue or a pull request (they share a numbering space and an endpoint).",
@@ -429,7 +429,7 @@ export const TOOLS: Tool[] = [
       ),
   },
   {
-    name: "nyuchi_review_pull_request",
+    name: "shamwari_review_pull_request",
     // CREATE rather than READ because this tool CAN post. It defaults to a
     // dry run, but an annotation describes what a tool may do, not what it
     // usually does — a client deciding whether to confirm needs the ceiling.
@@ -566,7 +566,7 @@ export async function handleRpc(
         capabilities: { tools: {} },
         _meta: { [META_SERVER_INFO]: SERVER_INFO },
         instructions:
-          "GitHub review, pull request and issue operations for allowlisted Nyuchi repositories. Call nyuchi_whoami first: it reports, per repository, whether the App is installed and whether that installation grants the permissions the scoped token requests.",
+          "GitHub review, pull request and issue operations for allowlisted Nyuchi repositories. Call shamwari_whoami first: it reports, per repository, whether the App is installed and whether that installation grants the permissions the scoped token requests.",
       });
     case "notifications/initialized":
     case "notifications/cancelled":

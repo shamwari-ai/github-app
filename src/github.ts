@@ -234,7 +234,7 @@ async function githubJson(
     headers: {
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "nyuchi-github-mcp",
+      "User-Agent": "shamwari-github-mcp",
       ...(init.headers || {}),
     },
   });
@@ -407,7 +407,7 @@ async function repoText(
       Authorization: `Bearer ${token}`,
       Accept: accept,
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "nyuchi-github-mcp",
+      "User-Agent": "shamwari-github-mcp",
     },
   });
   const text = await res.text();
@@ -532,7 +532,7 @@ export function paginate<T>(rows: T[], limit: number, page: number): Page<T> {
  * base, _links and a full repository object on every row. Measured on this
  * repository, thirteen of them serialise to 276,801 bytes against 3,842 for
  * the fields below — 99% of the payload is structure nothing reads. Anything
- * omitted here is one nyuchi_get_pull_request away.
+ * omitted here is one shamwari_get_pull_request away.
  */
 export function slimPull(p: Record<string, unknown>) {
   return {

@@ -1,4 +1,4 @@
-name = "nyuchi-github-mcp"
+name = "shamwari-github-mcp"
 main = "src/index.ts"
 compatibility_date = "2025-06-01"
 
@@ -10,7 +10,7 @@ workers_dev = true
 
 # Custom domain on the nyuchi.dev zone, matching fly.nyuchi.dev. Wrangler
 # provisions the cert and DNS record for the hostname on deploy.
-routes = [{ pattern = "github.nyuchi.dev", custom_domain = true }]
+routes = [{ pattern = "github.shamwari.ai", custom_domain = true }]
 
 # Stable, non-secret defaults. The private key is a SECRET (see below); every
 # value here is public policy, versioned so a change to what the agent may
@@ -54,7 +54,7 @@ GITHUB_TOKEN_PERMISSIONS = "pull_requests:write,issues:write,contents:read,metad
 # host nyuchi-fly-mcp uses; see that file for why the three sibling hosts
 # (auth.mukoko.com, api.nyuchi.com, api.mukoko.com) are NOT this.
 WORKOS_AUTHORIZATION_SERVER = "https://accounts.mukoko.com"
-MCP_RESOURCE_URL = "https://github.nyuchi.dev/mcp"
+MCP_RESOURCE_URL = "https://github.shamwari.ai/mcp"
 
 # Authorization policy (public, versioned for auditability).
 # Org gate: Nyuchi Africa members only — blocks every other WorkOS org.
@@ -104,7 +104,7 @@ REVIEW_TRIGGER_ASSOCIATIONS = "OWNER,MEMBER,COLLABORATOR"
 REVIEW_ENABLED = "true"
 
 # Secrets — set with `wrangler secret put <NAME>` or in the Cloudflare
-# dashboard (Workers -> nyuchi-github-mcp -> Settings -> Variables and Secrets):
+# dashboard (Workers -> shamwari-github-mcp -> Settings -> Variables and Secrets):
 #
 #   GITHUB_APP_PRIVATE_KEY  The App's .pem, whole file including the BEGIN/END
 #                           lines. PKCS#1 ("BEGIN RSA PRIVATE KEY", what
@@ -113,7 +113,7 @@ REVIEW_ENABLED = "true"
 #                           RELEASE_APP_PRIVATE_KEY with no conversion.
 #   WORKOS_JWKS_URL         https://accounts.mukoko.com/oauth2/jwks
 #   WORKOS_ISSUER           https://accounts.mukoko.com
-#   WORKOS_AUDIENCE         https://github.nyuchi.dev/mcp,client_01KVTX0V2K1VM3PSC0DJ9VZWTV
+#   WORKOS_AUDIENCE         https://github.shamwari.ai/mcp,client_01KVTX0V2K1VM3PSC0DJ9VZWTV
 #
 # WORKOS_AUDIENCE takes a comma-separated list because `aud` depends on how
 # the token was obtained. A client that registers itself dynamically gets the
