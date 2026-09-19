@@ -145,7 +145,7 @@ test("a missing or mismatched Mcp-Method is refused", () => {
 });
 
 test("tools/call requires an Mcp-Name matching params.name", () => {
-  const body = modernBody("tools/call", { name: "nyuchi_whoami" });
+  const body = modernBody("tools/call", { name: "shamwari_whoami" });
   const base = {
     "MCP-Protocol-Version": MODERN_VERSION,
     "Mcp-Method": "tools/call",
@@ -153,13 +153,16 @@ test("tools/call requires an Mcp-Name matching params.name", () => {
   assert.equal(validateModernRequest(hdrs(base), body)?.code, HEADER_MISMATCH);
   assert.equal(
     validateModernRequest(
-      hdrs({ ...base, "Mcp-Name": "nyuchi_get_issue" }),
+      hdrs({ ...base, "Mcp-Name": "shamwari_get_issue" }),
       body,
     )?.code,
     HEADER_MISMATCH,
   );
   assert.equal(
-    validateModernRequest(hdrs({ ...base, "Mcp-Name": "nyuchi_whoami" }), body),
+    validateModernRequest(
+      hdrs({ ...base, "Mcp-Name": "shamwari_whoami" }),
+      body,
+    ),
     null,
   );
 });
@@ -214,7 +217,7 @@ test("a Base64-sentinel Mcp-Name is decoded before comparison", () => {
 });
 
 test("a plain header value passes through unchanged", () => {
-  assert.equal(decodeHeaderValue("nyuchi_whoami"), "nyuchi_whoami");
+  assert.equal(decodeHeaderValue("shamwari_whoami"), "shamwari_whoami");
 });
 
 test("an undecodable sentinel fails the comparison rather than throwing", () => {
@@ -226,13 +229,13 @@ test("an undecodable sentinel fails the comparison rather than throwing", () => 
 // --- Origin ---------------------------------------------------------------
 
 test("Origin validation allows the resource's own origin and refuses others", () => {
-  const resource = "https://github.nyuchi.dev/mcp";
-  assert.equal(originAllowed("https://github.nyuchi.dev", resource), true);
+  const resource = "https://github.shamwari.ai/mcp";
+  assert.equal(originAllowed("https://github.shamwari.ai", resource), true);
   assert.equal(originAllowed("https://evil.example.com", resource), false);
 });
 
 test("an absent Origin is allowed", () => {
   // Non-browser MCP clients send none. Rejecting them would break every
   // legitimate caller to guard against an attack only browsers can mount.
-  assert.equal(originAllowed(null, "https://github.nyuchi.dev/mcp"), true);
+  assert.equal(originAllowed(null, "https://github.shamwari.ai/mcp"), true);
 });

@@ -1,7 +1,10 @@
-# nyuchi-github-mcp
+# Shamwari for GitHub
 
-> A Cloudflare Worker that exposes GitHub review, pull request and issue
-> operations as an MCP server, so Claude can work the repositories directly.
+> A Cloudflare Worker that reviews pull requests and exposes GitHub review,
+> pull request and issue operations as an MCP server.
+
+Served at **`https://github.shamwari.ai`**. The GitHub App is **Shamwari for
+GitHub**; comment `@shamwari` on a pull request to summon a review.
 
 Sibling of [`nyuchi-fly-mcp`](https://github.com/nyuchi/mukoko-platform/tree/main/fly-mcp):
 same transport (MCP Streamable HTTP / JSON-RPC 2.0), same WorkOS Connect auth,
@@ -10,25 +13,25 @@ config with a different URL.
 
 ## What it does
 
-| Tool                           | What it does                                                     |
-| ------------------------------ | ---------------------------------------------------------------- |
-| `nyuchi_whoami`                | Per-repo installation and permission readiness — start here      |
-| `nyuchi_list_pull_requests`    | PRs, most recently updated first                                 |
-| `nyuchi_get_pull_request`      | One PR: metadata, mergeability, files, check rollup              |
-| `nyuchi_get_pull_request_diff` | The unified diff — the text you actually review                  |
-| `nyuchi_create_review`         | Submit a review, `COMMENT` or `REQUEST_CHANGES`, inline comments |
-| `nyuchi_create_pull_request`   | Open a PR (draft unless told otherwise)                          |
-| `nyuchi_update_pull_request`   | Title, body, base, open/close                                    |
-| `nyuchi_list_issues`           | Issues, most recently updated first                              |
-| `nyuchi_get_issue`             | One issue                                                        |
-| `nyuchi_create_issue`          | File an issue                                                    |
-| `nyuchi_update_issue`          | Retitle, relabel, reassign, open/close                           |
-| `nyuchi_comment`               | Comment on an issue or PR                                        |
-| `nyuchi_review_pull_request`   | Review a PR with a model on Workers AI — dry run by default      |
+| Tool                             | What it does                                                     |
+| -------------------------------- | ---------------------------------------------------------------- |
+| `shamwari_whoami`                | Per-repo installation and permission readiness — start here      |
+| `shamwari_list_pull_requests`    | PRs, most recently updated first                                 |
+| `shamwari_get_pull_request`      | One PR: metadata, mergeability, files, check rollup              |
+| `shamwari_get_pull_request_diff` | The unified diff — the text you actually review                  |
+| `shamwari_create_review`         | Submit a review, `COMMENT` or `REQUEST_CHANGES`, inline comments |
+| `shamwari_create_pull_request`   | Open a PR (draft unless told otherwise)                          |
+| `shamwari_update_pull_request`   | Title, body, base, open/close                                    |
+| `shamwari_list_issues`           | Issues, most recently updated first                              |
+| `shamwari_get_issue`             | One issue                                                        |
+| `shamwari_create_issue`          | File an issue                                                    |
+| `shamwari_update_issue`          | Retitle, relabel, reassign, open/close                           |
+| `shamwari_comment`               | Comment on an issue or PR                                        |
+| `shamwari_review_pull_request`   | Review a PR with a model on Workers AI — dry run by default      |
 
 ## What it deliberately cannot do
 
-**It does not approve pull requests.** `nyuchi_create_review` accepts
+**It does not approve pull requests.** `shamwari_create_review` accepts
 `COMMENT` and `REQUEST_CHANGES` and refuses `APPROVE` in any casing, before
 the repository allowlist is even consulted. An agent that can approve can
 satisfy a branch protection review requirement by itself, letting code reach a
@@ -75,7 +78,7 @@ Token asks:    contents:read   pull_requests:write  issues:write  metadata:read
 >
 > Two states look alike and are not: an App can _declare_ a permission while
 > the installation has not _accepted_ it. Adding one puts the installation
-> into pending review until an owner approves. `nyuchi_whoami` reports what
+> into pending review until an owner approves. `shamwari_whoami` reports what
 > the installation actually grants, per repository, so the difference shows up
 > in one call rather than as a 422 mid-task.
 
@@ -115,7 +118,7 @@ private key is the secret:
 wrangler secret put GITHUB_APP_PRIVATE_KEY   # the whole .pem, BEGIN/END included
 wrangler secret put WORKOS_JWKS_URL          # https://accounts.mukoko.com/oauth2/jwks
 wrangler secret put WORKOS_ISSUER            # https://accounts.mukoko.com
-wrangler secret put WORKOS_AUDIENCE          # https://github.nyuchi.dev/mcp
+wrangler secret put WORKOS_AUDIENCE          # https://github.shamwari.ai/mcp
 ```
 
 The three WorkOS values are not guesses. `issuer` and `jwks_uri` are what
@@ -135,14 +138,14 @@ on how the client authenticated:
 
 | How the client got its token                          | `aud` carries                                          |
 | ----------------------------------------------------- | ------------------------------------------------------ |
-| Dynamic client registration (Claude registers itself) | the **resource URI**, `https://github.nyuchi.dev/mcp`  |
+| Dynamic client registration (Claude registers itself) | the **resource URI**, `https://github.shamwari.ai/mcp` |
 | The **Nyuchi Internal Tools** Connect app             | its **client id**, `client_01KVTX0V2K1VM3PSC0DJ9VZWTV` |
 
 Listing both accepts either and still rejects a token minted for anything else,
 so set:
 
 ```
-WORKOS_AUDIENCE = https://github.nyuchi.dev/mcp,client_01KVTX0V2K1VM3PSC0DJ9VZWTV
+WORKOS_AUDIENCE = https://github.shamwari.ai/mcp,client_01KVTX0V2K1VM3PSC0DJ9VZWTV
 ```
 
 The Connect app route is worth preferring: it is **org-restricted to Nyuchi
@@ -219,7 +222,7 @@ supported versions, capabilities and server identity in one call.
 
 ## What the list tools return
 
-`nyuchi_list_pull_requests` and `nyuchi_list_issues` return a page, not a raw
+`shamwari_list_pull_requests` and `shamwari_list_issues` return a page, not a raw
 GitHub array:
 
 ```json
@@ -244,9 +247,9 @@ serialise to 276,801 bytes; the same thirteen shaped are 3,842. That is 99% of
 a tool result spent on structure nothing reads, and it is charged to the
 model's context on every call. The fields kept are the ones you triage on —
 number, title, state, draft, author, base, head, labels, timestamps, URL —
-and anything dropped is one `nyuchi_get_pull_request` away.
+and anything dropped is one `shamwari_get_pull_request` away.
 
-`nyuchi_list_issues` adds `is_pull_request`, because GitHub's issues endpoint
+`shamwari_list_issues` adds `is_pull_request`, because GitHub's issues endpoint
 returns pull requests too and a caller that does not notice will file a review
 comment on the wrong kind of thing.
 
@@ -268,7 +271,7 @@ are enforced server-side regardless of what any client believes.
 
 ## The review agent
 
-`nyuchi_review_pull_request` reads a diff, asks a model on **Workers AI** what
+`shamwari_review_pull_request` reads a diff, asks a model on **Workers AI** what
 is wrong with it, and returns findings anchored to specific lines. Inference
 runs on the same platform as the worker, so there is no third-party API key to
 hold and no egress to allow — it is billed to the Cloudflare account.
@@ -436,7 +439,7 @@ Nothing here acts on its own.
 
 **Milestone 2 — autonomous agent**, partly built. The _brain_ exists:
 `src/review.ts` reviews a pull request on demand through
-`nyuchi_review_pull_request`, and Workers AI removed the third-party API key
+`shamwari_review_pull_request`, and Workers AI removed the third-party API key
 that milestone was going to need.
 
 What is still missing is the _autonomy_: webhook ingest with signature
