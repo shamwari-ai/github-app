@@ -443,11 +443,71 @@ that review is lost. The failure is visible — the commit simply has no comment
 — and re-requesting the delivery re-runs it. Cloudflare Queues is the upgrade
 once review volume justifies provisioning one.
 
+## A2A — how other agents reach this
+
+MCP is tool-oriented: call a function, get a return value. **A2A is
+task-oriented**, and a code review is genuinely a task, so for agent callers
+it is the better fit of the two. It is the same review engine underneath,
+wrapped rather than reimplemented.
+
+| Path                               | Auth          | Purpose                     |
+| ---------------------------------- | ------------- | --------------------------- |
+| `GET /.well-known/agent-card.json` | none          | Agent Card (A2A 1.0 name)   |
+| `GET /.well-known/agent.json`      | none          | the same card, pre-1.0 name |
+| `POST /a2a`                        | WorkOS bearer | JSON-RPC: `SendMessage`     |
+
+The card is public for the same reason the OAuth metadata beside it is: a
+client cannot authenticate until it has read which scheme to use.
+
+### Synchronous, and that is why there is no storage
+
+The spec says a non-blocking send "MUST wait until the task reaches a terminal
+state before returning", so a review that finishes inside the request comes
+back `TASK_STATE_COMPLETED` with its findings attached as an artifact. No
+polling, because there is nothing to poll — and therefore no KV, no D1, no
+Durable Object, and no bump to `compatibility_date` on a Worker that is live.
+
+`GetTask` is **deliberately absent** rather than stubbed. Every task this
+server returns is already terminal; answering `GetTask` with a fabricated
+"not found" would tell a client its task was lost when it was handed back.
+
+Durable tasks are the upgrade when a review needs to outlive its request.
+That needs storage, and it should be a decision rather than a side effect.
+
+### The wire format is 1.0, which is not the shape you remember
+
+A2A 1.0 **removed the `kind` discriminator everywhere.** The JSON member name
+is now the discriminator:
+
+|                 | Pre-1.0                           | 1.0                                      |
+| --------------- | --------------------------------- | ---------------------------------------- |
+| Text part       | `{ "kind": "text", "text": "…" }` | `{ "text": "…" }`                        |
+| Data part       | `{ "kind": "data", "data": {…} }` | `{ "data": {…}, "mediaType": "…" }`      |
+| Task            | carried `kind`                    | no `kind` field                          |
+| Security scheme | `{ "type": "openIdConnect" }`     | `{ "openIdConnectSecurityScheme": {…} }` |
+
+The old shape serialises fine and reads fine, and no current client parses
+it — a defect invisible until a real agent tries to talk to you. Tests pin
+each one, and each fails if the legacy shape comes back.
+
+### It will not guess which pull request you mean
+
+A data part `{ repo, number }` is read first, then `owner/repo#number`, then a
+looser sentence. **A bare number with no repository is refused**, because
+guessing the repository would review the wrong thing confidently — the exact
+failure this agent exists to avoid.
+
+A2A callers get a **dry run**. Posting is the webhook path's job: an agent
+asking to see a review is not the same as asking for one to be published
+under this App's name.
+
 ## Endpoints
 
 ```
 POST /mcp                                    MCP, requires a WorkOS bearer token
 POST /webhook                                GitHub webhook, HMAC-signed (no bearer)
+POST /a2a                                    A2A JSON-RPC, requires a WorkOS bearer token
+GET  /.well-known/agent-card.json            A2A Agent Card (public)
 GET  /.well-known/oauth-protected-resource   OAuth resource metadata (public)
 GET  /health                                 liveness (public)
 GET|DELETE /mcp                              405 (sessions and GET streams are gone)
