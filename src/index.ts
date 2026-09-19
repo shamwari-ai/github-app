@@ -29,6 +29,7 @@ import {
   type JsonRpcLike,
 } from "./protocol";
 import { handleWebhook } from "./webhook";
+import { agentCard, handleA2A, type A2ARequest } from "./a2a";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -132,13 +133,26 @@ export default {
       return handleWebhook(request, env, ctx);
     }
 
+    // A2A Agent Card — public, for the same reason the OAuth metadata below
+    // is: a client cannot authenticate until it has read which scheme to use.
+    // Both paths are served. `agent-card.json` is the 1.0 name and
+    // `agent.json` the one before it, which is the same dual-era courtesy the
+    // MCP layer extends and costs one line.
+    if (
+      url.pathname === "/.well-known/agent-card.json" ||
+      url.pathname === "/.well-known/agent.json"
+    ) {
+      return json(agentCard(env, url.origin));
+    }
+
     // OAuth 2.0 Protected Resource Metadata — public, so clients can discover
     // WorkOS as the authorization server.
     if (url.pathname === "/.well-known/oauth-protected-resource") {
       return json(protectedResourceMetadata(env));
     }
 
-    if (url.pathname !== "/mcp") {
+    const isA2A = url.pathname === "/a2a";
+    if (url.pathname !== "/mcp" && !isA2A) {
       return json({ error: "not found" }, 404);
     }
 
@@ -205,6 +219,19 @@ export default {
         },
         400,
       );
+    }
+
+    // A2A shares this endpoint's authentication and nothing else. It is not
+    // MCP: no protocol-version headers, no era detection, no batch. Handling
+    // it here rather than in a second Worker is what lets one WorkOS token,
+    // one App installation and one review engine serve both protocols.
+    if (isA2A) {
+      try {
+        const response = await handleA2A(payload as A2ARequest, env);
+        return json(response ?? {});
+      } catch (e) {
+        return internalError((payload as A2ARequest)?.id ?? null, e);
+      }
     }
 
     // 2026-07-28 sends one JSON-RPC message per POST. Batches belong to the
