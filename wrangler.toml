@@ -91,13 +91,17 @@ REVIEW_MENTION = "@shamwari"
 # the association in the webhook payload, so it costs no extra call.
 REVIEW_TRIGGER_ASSOCIATIONS = "OWNER,MEMBER,COLLABORATOR"
 
-# AI Gateway to route inference through. UNSET = call Workers AI directly,
-# which works and is what a first deploy does. Set it to the existing Shamwari
-# gateway and every review is logged with the repository and its trigger
-# attached, so "what did this repository cost this month" becomes a query
-# rather than an estimate — and caching, retries and rate limits become
-# gateway configuration instead of code in this worker.
-# AI_GATEWAY_ID = "shamwari"
+# AI Gateway every review's inference is routed through. Each call is logged
+# with { repo, trigger } metadata attached, so "what did this repository cost
+# this month" is a query rather than an estimate — and caching, retries and
+# rate limits become gateway configuration instead of code in this worker.
+#
+# That metadata field is also where a customer id goes when this bills.
+#
+# It lives here and not in the dashboard because `wrangler deploy` REPLACES
+# the whole [vars] block: a value set only in the dashboard is silently
+# dropped by the next deploy, exactly as the GITHUB_APP_ID note above warns.
+AI_GATEWAY_ID = "shamwari"
 
 # KILL SWITCH. Set to exactly "false" to make every review call fail closed
 # without a code deploy.
