@@ -217,7 +217,7 @@ export async function verifyWorkosToken(
 }
 
 export function resourceUrl(env: Env): string {
-  return env.MCP_RESOURCE_URL || "https://github.nyuchi.dev/mcp";
+  return env.MCP_RESOURCE_URL || "https://github.shamwari.ai/mcp";
 }
 
 /** OAuth 2.0 Protected Resource Metadata (RFC 9728) — points clients at WorkOS. */

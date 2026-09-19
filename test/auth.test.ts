@@ -15,7 +15,7 @@ import type { Env } from "../src/env";
 import { verifyWorkosToken } from "../src/auth";
 
 const ISSUER = "https://accounts.mukoko.com";
-const AUDIENCE = "https://github.nyuchi.dev/mcp";
+const AUDIENCE = "https://github.shamwari.ai/mcp";
 const JWKS_URL = "https://accounts.mukoko.com/oauth2/jwks";
 const ORG = "org_01KRDAB894DJF5V38PT5617TV1";
 

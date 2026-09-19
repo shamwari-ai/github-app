@@ -1,4 +1,4 @@
-// nyuchi-github-mcp — a Cloudflare Worker that exposes GitHub review, pull
+// shamwari-github-mcp — a Cloudflare Worker that exposes GitHub review, pull
 // request and issue operations as an MCP server, guarded by WorkOS Connect.
 //
 // The GitHub App private key lives here as a Worker secret; callers
@@ -120,7 +120,7 @@ export default {
     }
 
     if (url.pathname === "/health") {
-      return json({ status: "ok", server: "nyuchi-github-mcp" });
+      return json({ status: "ok", server: "shamwari-github-mcp" });
     }
 
     // GitHub webhook ingest. NOT behind the WorkOS bearer check: GitHub does

@@ -1,5 +1,5 @@
 {
-  "name": "nyuchi-github-mcp",
+  "name": "shamwari-github-mcp",
   "version": "0.1.0",
   "private": true,
   "description": "Cloudflare Worker MCP server for GitHub review, pull request and issue operations",
