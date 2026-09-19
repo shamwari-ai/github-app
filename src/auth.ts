@@ -185,9 +185,17 @@ export async function verifyWorkosToken(
   }
 
   // Platform permission gate — the caller must hold the required role OR
-  // permission (WorkOS may express the grant as either, and third-party app
-  // tokens surface permissions rather than the org role). Satisfying any
-  // configured dimension passes; a plain org member with neither is rejected.
+  // permission. WorkOS expresses the same grant three different ways
+  // depending on how the token was obtained, and all three are read here:
+  //
+  //   claims.role / claims.roles   an AuthKit USER signing in
+  //   claims.permissions           a third-party Connect app token
+  //   claims.scope                 a WorkOS AGENT token (Agent Auth)
+  //
+  // The third is why an agent could authenticate but never get in: agent
+  // tokens are signed by the same issuer and pass every check above, then
+  // arrive at this gate carrying `scope` and no role at all. Reading scope
+  // is what lets an agent connect without loosening anything for a person.
   const reqRoles = splitCsv(env.WORKOS_REQUIRED_ROLES);
   const reqPerms = splitCsv(env.WORKOS_REQUIRED_PERMISSIONS);
   if (reqRoles.length || reqPerms.length) {
@@ -197,10 +205,7 @@ export async function verifyWorkosToken(
       ...(typeof roleClaim === "string" ? [roleClaim] : []),
       ...(Array.isArray(rolesClaim) ? (rolesClaim as string[]) : []),
     ];
-    const permsClaim = claims.permissions;
-    const tokenPerms = Array.isArray(permsClaim)
-      ? (permsClaim as string[])
-      : [];
+    const tokenPerms = [...permissionsOf(claims), ...scopesOf(claims)];
     const roleOk =
       reqRoles.length > 0 && reqRoles.some((r) => tokenRoles.includes(r));
     const permOk =
@@ -214,6 +219,53 @@ export async function verifyWorkosToken(
   }
 
   return claims;
+}
+
+/** Permissions from a user or Connect-app token, which carry an array. */
+function permissionsOf(claims: Record<string, unknown>): string[] {
+  const p = claims.permissions;
+  return Array.isArray(p) ? (p as string[]) : [];
+}
+
+/**
+ * Permissions from a WorkOS agent token, which carries OAuth `scope`.
+ *
+ * Space-separated per RFC 6749, not an array — reading it as one silently
+ * yields nothing and the agent is rejected for holding no permission, which
+ * is indistinguishable from it genuinely holding none.
+ */
+function scopesOf(claims: Record<string, unknown>): string[] {
+  const s = claims.scope;
+  if (typeof s === "string") return s.split(" ").filter(Boolean);
+  // Some issuers use the plural array form. Accept it rather than guess.
+  if (Array.isArray(s))
+    return (s as unknown[]).filter((v): v is string => typeof v === "string");
+  return [];
+}
+
+/**
+ * Who this token says is calling, for logs and audit.
+ *
+ * An agent token's `sub` is its registration id, and `act` is the RFC 8693
+ * delegation claim naming the person who authorised it. Recording both is
+ * the difference between "an agent did this" and "an agent did this FOR
+ * someone" — which is the question asked after anything goes wrong.
+ */
+export function callerIdentity(claims: Record<string, unknown>): {
+  kind: "agent" | "user";
+  subject: string;
+  onBehalfOf?: string;
+  org?: string;
+} {
+  const sub = typeof claims.sub === "string" ? claims.sub : "";
+  const act = claims.act as { sub?: unknown } | undefined;
+  const onBehalfOf = act && typeof act.sub === "string" ? act.sub : undefined;
+  return {
+    kind: sub.startsWith("agent_") ? "agent" : "user",
+    subject: sub,
+    ...(onBehalfOf ? { onBehalfOf } : {}),
+    ...(typeof claims.org_id === "string" ? { org: claims.org_id } : {}),
+  };
 }
 
 export function resourceUrl(env: Env): string {

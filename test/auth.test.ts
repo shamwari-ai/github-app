@@ -190,3 +190,94 @@ test("an unset WORKOS_JWKS_URL is refused", async () => {
     /WORKOS_JWKS_URL unset/,
   );
 });
+
+// --- WorkOS Agent Auth ----------------------------------------------------
+//
+// Agent tokens are signed by the SAME issuer and JWKS as user tokens, so they
+// clear signature, issuer, audience and the org gate untouched. They then
+// arrive at the permission gate carrying `scope` and no role at all — which
+// is why an agent could authenticate and still never get in.
+
+const agentClaims = {
+  ...goodClaims,
+  sub: "agent_reg_01ABCDEF",
+  scope: "mongodb:access",
+  role: undefined,
+  roles: undefined,
+};
+
+test("an agent token is accepted on its scope claim", async () => {
+  const claims = await verifyWorkosToken(await mintToken(agentClaims), env());
+  assert.equal(claims.sub, "agent_reg_01ABCDEF");
+});
+
+test("scope is space-separated, not an array — all of it is read", async () => {
+  // Reading it as an array silently yields nothing, and the agent is refused
+  // for holding no permission, which looks identical to genuinely holding
+  // none. Several scopes, the matching one last.
+  const claims = await verifyWorkosToken(
+    await mintToken({
+      ...agentClaims,
+      scope: "repo:read issues:read mongodb:access",
+    }),
+    env(),
+  );
+  assert.ok(claims);
+});
+
+test("an agent whose scope does not match is still refused", async () => {
+  await assert.rejects(
+    verifyWorkosToken(
+      await mintToken({ ...agentClaims, scope: "something:else" }),
+      env(),
+    ),
+    /missing required platform role\/permission/,
+  );
+});
+
+test("an agent from another organization is refused, as a person would be", async () => {
+  await assert.rejects(
+    verifyWorkosToken(
+      await mintToken({ ...agentClaims, org_id: "org_someone_else" }),
+      env(),
+    ),
+    /organization not permitted/,
+  );
+});
+
+test("accepting scope does not let a person in without a role", async () => {
+  // The change must widen the gate for agents only. A user token with
+  // neither role nor permission still fails.
+  await assert.rejects(
+    verifyWorkosToken(
+      await mintToken({ ...goodClaims, role: "member", permissions: [] }),
+      env(),
+    ),
+    /missing required platform role\/permission/,
+  );
+});
+
+test("callerIdentity separates an agent from a person", async () => {
+  const { callerIdentity } = await import("../src/auth");
+  assert.equal(callerIdentity({ sub: "agent_reg_01ABC" }).kind, "agent");
+  assert.equal(callerIdentity({ sub: "user_01XYZ" }).kind, "user");
+});
+
+test("callerIdentity records who the agent acts for", async () => {
+  const { callerIdentity } = await import("../src/auth");
+  // RFC 8693: `act` is present only after a claim ceremony binds the agent
+  // to a person. Autonomous agents have none, and that absence is the fact.
+  const delegated = callerIdentity({
+    sub: "agent_reg_01ABC",
+    act: { sub: "user_01XYZ" },
+    org_id: "org_1",
+  });
+  assert.equal(delegated.onBehalfOf, "user_01XYZ");
+  assert.equal(delegated.org, "org_1");
+
+  const autonomous = callerIdentity({
+    sub: "agent_reg_01ABC",
+    org_id: "org_1",
+  });
+  assert.equal(autonomous.onBehalfOf, undefined);
+});
