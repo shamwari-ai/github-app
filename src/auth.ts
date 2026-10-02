@@ -276,17 +276,46 @@ export const AUTHORIZATION_SERVER_MISSING =
   "WORKOS_AUTHORIZATION_SERVER is not configured";
 
 /**
+ * Parse — never concatenate — a configured AuthKit domain into an https origin.
+ *
+ * Accepts a bare host or an https origin, in any case. Any path, query or
+ * fragment is dropped. A blank value, `http:`, any other scheme, embedded
+ * credentials and anything `URL` cannot parse all throw an error whose message
+ * starts with `AUTHORIZATION_SERVER_MISSING`. The result is `URL.origin`.
+ */
+export function normaliseAuthkitDomain(value: string | undefined): string {
+  const raw = value?.trim();
+  if (!raw) throw new Error(AUTHORIZATION_SERVER_MISSING);
+  let url: URL;
+  try {
+    url = new URL(
+      /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`,
+    );
+  } catch {
+    throw new Error(
+      `${AUTHORIZATION_SERVER_MISSING} (not a valid host or URL)`,
+    );
+  }
+  if (url.protocol !== "https:" || url.username || url.password) {
+    throw new Error(
+      `${AUTHORIZATION_SERVER_MISSING} (must be an https origin)`,
+    );
+  }
+  return url.origin;
+}
+
+/**
  * The AuthKit issuer to advertise, from configuration only — there is no
- * compiled-in default and no fallback host. Accepts a bare host or an https
- * origin; trims whitespace and any trailing slash. Null when unset.
+ * compiled-in default and no fallback host. Parsed by `normaliseAuthkitDomain`.
+ * Null when unset or unusable (http, another scheme, credentials,
+ * unparseable): the metadata and agent-card routes then answer 503.
  */
 export function authorizationServer(env: Env): string | null {
-  const raw = (env.WORKOS_AUTHORIZATION_SERVER || "").trim();
-  if (!raw) return null;
-  let origin = /^https?:\/\//.test(raw) ? raw : `https://${raw}`;
-  // Strip trailing slashes without a regex (no backtracking on long input).
-  while (origin.endsWith("/")) origin = origin.slice(0, -1);
-  return origin;
+  try {
+    return normaliseAuthkitDomain(env.WORKOS_AUTHORIZATION_SERVER);
+  } catch {
+    return null;
+  }
 }
 
 /**

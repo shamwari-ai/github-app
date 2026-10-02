@@ -71,6 +71,39 @@ test("the card fails closed when WORKOS_AUTHORIZATION_SERVER is unset", () => {
   assert.equal(agentCard({} as unknown as Env, "https://x.test"), null);
 });
 
+test("the card fails closed when WORKOS_AUTHORIZATION_SERVER is not an https origin", () => {
+  for (const bad of [
+    "http://identity.example.test",
+    "https://user:pass@identity.example.test",
+  ]) {
+    assert.equal(
+      agentCard(
+        { WORKOS_AUTHORIZATION_SERVER: bad } as unknown as Env,
+        "https://x.test",
+      ),
+      null,
+      bad,
+    );
+  }
+});
+
+test("the card builds its OpenID Connect URL on the parsed origin", () => {
+  const c = agentCard(
+    {
+      WORKOS_AUTHORIZATION_SERVER: "HTTPS://Identity.Example.Test/some/path",
+    } as unknown as Env,
+    "https://x.test",
+  )!;
+  const schemes = c.securitySchemes as unknown as Record<
+    string,
+    Record<string, { openIdConnectUrl?: string }>
+  >;
+  assert.equal(
+    schemes.workos.openIdConnectSecurityScheme.openIdConnectUrl,
+    "https://identity.example.test/.well-known/openid-configuration",
+  );
+});
+
 test("the card says plainly that it cannot approve", () => {
   const c = agentCard(env(), "https://x.test")!;
   assert.match(String(c.description), /[Cc]annot approve/);
