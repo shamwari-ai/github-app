@@ -22,6 +22,7 @@
 // something that looks right and no current client will parse.
 
 import type { Env } from "./env";
+import { authorizationServer } from "./auth";
 import { GitHubError } from "./github";
 import { reviewPullRequest, REVIEW_MODELS, DEFAULT_MODEL } from "./review";
 
@@ -49,10 +50,16 @@ export interface A2ARequest {
  * Served unauthenticated, like the OAuth resource metadata beside it: a
  * client cannot authenticate until it has read which scheme to use. Nothing
  * here is secret, and the skills it lists are the ones actually implemented.
+ *
+ * Null when WORKOS_AUTHORIZATION_SERVER is unset — the security scheme names
+ * the authorization server, which comes only from configuration.
  */
-export function agentCard(env: Env, baseUrl: string): Record<string, unknown> {
-  const authServer =
-    env.WORKOS_AUTHORIZATION_SERVER || "https://accounts.mukoko.com";
+export function agentCard(
+  env: Env,
+  baseUrl: string,
+): Record<string, unknown> | null {
+  const authServer = authorizationServer(env);
+  if (!authServer) return null;
   return {
     name: "Shamwari for GitHub",
     description:

@@ -116,13 +116,16 @@ private key is the secret:
 
 ```bash
 wrangler secret put GITHUB_APP_PRIVATE_KEY   # the whole .pem, BEGIN/END included
-wrangler secret put WORKOS_JWKS_URL          # https://accounts.mukoko.com/oauth2/jwks
-wrangler secret put WORKOS_ISSUER            # https://accounts.mukoko.com
+wrangler secret put WORKOS_AUTHORIZATION_SERVER  # <AuthKit domain>
+wrangler secret put WORKOS_JWKS_URL          # <AuthKit domain>/oauth2/jwks
+wrangler secret put WORKOS_ISSUER            # <AuthKit domain>
 wrangler secret put WORKOS_AUDIENCE          # https://github.shamwari.ai/mcp
 ```
 
-The three WorkOS values are not guesses. `issuer` and `jwks_uri` are what
-`https://accounts.mukoko.com/.well-known/oauth-authorization-server` serves;
+The AuthKit domain is set per environment (1Password `nyuchi/workos`, field
+`WORKOS_AUTHKIT_DOMAIN`) and never committed; there is no default in code.
+`issuer` and `jwks_uri` are what
+`<AuthKit domain>/.well-known/oauth-authorization-server` serves;
 the audience is this worker's resource URI.
 
 **Do not use `https://api.workos.com/sso/jwks/<client_id>`.** That is the older

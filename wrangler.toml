@@ -49,11 +49,11 @@ GITHUB_ALLOWED_REPOS = "nyuchi/web-services,nyuchi/api-gateway,nyuchi/mukoko-pla
 # App and the installation re-authorised. `github_whoami` reports the gap.
 GITHUB_TOKEN_PERMISSIONS = "pull_requests:write,issues:write,contents:read,metadata:read"
 
-# The WorkOS AuthKit issuer — the OAuth 2.1 authorization server MCP clients
-# discover from our resource metadata and run their PKCE flow against. Same
-# host nyuchi-fly-mcp uses; see that file for why the three sibling hosts
-# (auth.mukoko.com, api.nyuchi.com, api.mukoko.com) are NOT this.
-WORKOS_AUTHORIZATION_SERVER = "https://accounts.mukoko.com"
+# WORKOS_AUTHORIZATION_SERVER — the WorkOS AuthKit issuer MCP clients discover
+# from our resource metadata — is deliberately NOT a var here. It is REQUIRED
+# and set per environment as a secret (see the list below); never committed,
+# no default in code. The resource metadata and agent card answer 503 until it
+# is set.
 MCP_RESOURCE_URL = "https://github.shamwari.ai/mcp"
 
 # Authorization policy (public, versioned for auditability).
@@ -115,8 +115,9 @@ REVIEW_ENABLED = "true"
 #                           GitHub hands you) or PKCS#8 both work — the worker
 #                           wraps PKCS#1 itself, so this is byte-identical to
 #                           RELEASE_APP_PRIVATE_KEY with no conversion.
-#   WORKOS_JWKS_URL         https://accounts.mukoko.com/oauth2/jwks
-#   WORKOS_ISSUER           https://accounts.mukoko.com
+#   WORKOS_AUTHORIZATION_SERVER  the AuthKit domain (https origin)
+#   WORKOS_JWKS_URL         <AuthKit domain>/oauth2/jwks
+#   WORKOS_ISSUER           <AuthKit domain>
 #   WORKOS_AUDIENCE         https://github.shamwari.ai/mcp,client_01KVTX0V2K1VM3PSC0DJ9VZWTV
 #
 # WORKOS_AUDIENCE takes a comma-separated list because `aud` depends on how
@@ -126,7 +127,7 @@ REVIEW_ENABLED = "true"
 # accepts either and still rejects tokens minted for anything else.
 #
 # Those three are not guesses: they are the `jwks_uri` and `issuer` that
-# https://accounts.mukoko.com/.well-known/oauth-authorization-server serves,
+# <AuthKit domain>/.well-known/oauth-authorization-server serves,
 # and the resource URI below. Do NOT use the older SSO form
 # https://api.workos.com/sso/jwks/<client_id> — AuthKit access tokens here are
 # signed by the authorization server above, so that JWKS has no matching key
