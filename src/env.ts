@@ -34,7 +34,7 @@ export interface Env {
   WORKOS_JWKS_URL?: string; // WorkOS Connect app's JWKS endpoint
   WORKOS_ISSUER?: string; // expected `iss` claim
   WORKOS_AUDIENCE?: string; // accepted `aud` values, comma-separated
-  WORKOS_AUTHORIZATION_SERVER?: string; // advertised in resource metadata
+  WORKOS_AUTHORIZATION_SERVER?: string; // AuthKit issuer advertised in resource metadata + agent card — required secret, no default
   MCP_RESOURCE_URL?: string; // this resource's canonical URL
 
   // ---- Review agent (Workers AI) ------------------------------------------
