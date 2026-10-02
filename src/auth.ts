@@ -283,8 +283,10 @@ export const AUTHORIZATION_SERVER_MISSING =
 export function authorizationServer(env: Env): string | null {
   const raw = (env.WORKOS_AUTHORIZATION_SERVER || "").trim();
   if (!raw) return null;
-  const origin = /^https?:\/\//.test(raw) ? raw : `https://${raw}`;
-  return origin.replace(/\/+$/, "");
+  let origin = /^https?:\/\//.test(raw) ? raw : `https://${raw}`;
+  // Strip trailing slashes without a regex (no backtracking on long input).
+  while (origin.endsWith("/")) origin = origin.slice(0, -1);
+  return origin;
 }
 
 /**
