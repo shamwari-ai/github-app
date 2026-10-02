@@ -164,11 +164,19 @@ test("the metadata advertises no scopes", () => {
   //   scope=github:read            -> 302 ?error=invalid_scope
   const meta = protectedResourceMetadata({
     MCP_RESOURCE_URL: "https://github.shamwari.ai/mcp",
-    WORKOS_AUTHORIZATION_SERVER: "https://accounts.mukoko.com",
+    WORKOS_AUTHORIZATION_SERVER: "https://identity.example.test/",
   } as Env);
+  assert.ok(meta);
   assert.equal("scopes_supported" in meta, false);
-  assert.deepEqual(meta.authorization_servers, ["https://accounts.mukoko.com"]);
+  assert.deepEqual(meta.authorization_servers, ["https://identity.example.test"]);
   assert.equal(meta.resource, "https://github.shamwari.ai/mcp");
+});
+
+test("resource metadata fails closed when WORKOS_AUTHORIZATION_SERVER is unset", () => {
+  assert.equal(
+    protectedResourceMetadata({ MCP_RESOURCE_URL: "https://github.shamwari.ai/mcp" } as Env),
+    null,
+  );
 });
 
 // --- tool annotations -----------------------------------------------------
