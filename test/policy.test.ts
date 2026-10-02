@@ -4,7 +4,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Env } from "../src/env";
-import { protectedResourceMetadata } from "../src/auth";
+import {
+  authorizationServer,
+  normaliseAuthkitDomain,
+  protectedResourceMetadata,
+} from "../src/auth";
 import { createReview, missingPermissions, resolveRepo } from "../src/github";
 
 const env = (over: Partial<Env> = {}): Env =>
@@ -168,15 +172,57 @@ test("the metadata advertises no scopes", () => {
   } as Env);
   assert.ok(meta);
   assert.equal("scopes_supported" in meta, false);
-  assert.deepEqual(meta.authorization_servers, ["https://identity.example.test"]);
+  assert.deepEqual(meta.authorization_servers, [
+    "https://identity.example.test",
+  ]);
   assert.equal(meta.resource, "https://github.shamwari.ai/mcp");
 });
 
 test("resource metadata fails closed when WORKOS_AUTHORIZATION_SERVER is unset", () => {
   assert.equal(
-    protectedResourceMetadata({ MCP_RESOURCE_URL: "https://github.shamwari.ai/mcp" } as Env),
+    protectedResourceMetadata({
+      MCP_RESOURCE_URL: "https://github.shamwari.ai/mcp",
+    } as Env),
     null,
   );
+});
+
+test("the advertised authorization server is parsed into an https origin", () => {
+  const at = (v: string | undefined) =>
+    authorizationServer({ WORKOS_AUTHORIZATION_SERVER: v } as Env);
+  assert.equal(at(undefined), null);
+  assert.equal(at("   "), null);
+  assert.equal(
+    at("https://identity.example.test"),
+    "https://identity.example.test",
+  );
+  assert.equal(at("identity.example.test"), "https://identity.example.test");
+  assert.equal(
+    at("HTTPS://Identity.Example.Test"),
+    "https://identity.example.test",
+  );
+  assert.equal(
+    at("https://identity.example.test/x/y?z=1#f"),
+    "https://identity.example.test",
+  );
+  for (const bad of [
+    "http://identity.example.test",
+    "javascript://identity.example.test",
+    "https://user:pass@identity.example.test",
+    "user@identity.example.test",
+    "https://",
+  ]) {
+    assert.equal(at(bad), null, bad);
+    assert.equal(
+      protectedResourceMetadata({ WORKOS_AUTHORIZATION_SERVER: bad } as Env),
+      null,
+      bad,
+    );
+    assert.throws(
+      () => normaliseAuthkitDomain(bad),
+      /WORKOS_AUTHORIZATION_SERVER is not configured/,
+    );
+  }
 });
 
 // --- tool annotations -----------------------------------------------------
