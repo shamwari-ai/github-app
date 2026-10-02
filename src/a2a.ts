@@ -81,7 +81,10 @@ export function agentCard(
     securitySchemes: {
       workos: {
         openIdConnectSecurityScheme: {
-          openIdConnectUrl: `${authServer}/.well-known/openid-configuration`,
+          openIdConnectUrl: new URL(
+            "/.well-known/openid-configuration",
+            authServer,
+          ).href,
         },
       },
     },
