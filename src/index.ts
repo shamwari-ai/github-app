@@ -14,6 +14,7 @@ import { GitHubError } from "./github";
 import {
   AuthError,
   callerIdentity,
+  AUTHORIZATION_SERVER_MISSING,
   protectedResourceMetadata,
   resourceUrl,
   verifyWorkosToken,
@@ -142,13 +143,18 @@ export default {
       url.pathname === "/.well-known/agent-card.json" ||
       url.pathname === "/.well-known/agent.json"
     ) {
-      return json(agentCard(env, url.origin));
+      const card = agentCard(env, url.origin);
+      // Fail closed: the authorization server comes only from configuration.
+      if (!card) return json({ error: AUTHORIZATION_SERVER_MISSING }, 503);
+      return json(card);
     }
 
     // OAuth 2.0 Protected Resource Metadata — public, so clients can discover
     // WorkOS as the authorization server.
     if (url.pathname === "/.well-known/oauth-protected-resource") {
-      return json(protectedResourceMetadata(env));
+      const meta = protectedResourceMetadata(env);
+      if (!meta) return json({ error: AUTHORIZATION_SERVER_MISSING }, 503);
+      return json(meta);
     }
 
     const isA2A = url.pathname === "/a2a";

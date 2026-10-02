@@ -272,13 +272,34 @@ export function resourceUrl(env: Env): string {
   return env.MCP_RESOURCE_URL || "https://github.shamwari.ai/mcp";
 }
 
-/** OAuth 2.0 Protected Resource Metadata (RFC 9728) — points clients at WorkOS. */
-export function protectedResourceMetadata(env: Env): Record<string, unknown> {
+export const AUTHORIZATION_SERVER_MISSING =
+  "WORKOS_AUTHORIZATION_SERVER is not configured";
+
+/**
+ * The AuthKit issuer to advertise, from configuration only — there is no
+ * compiled-in default and no fallback host. Accepts a bare host or an https
+ * origin; trims whitespace and any trailing slash. Null when unset.
+ */
+export function authorizationServer(env: Env): string | null {
+  const raw = (env.WORKOS_AUTHORIZATION_SERVER || "").trim();
+  if (!raw) return null;
+  const origin = /^https?:\/\//.test(raw) ? raw : `https://${raw}`;
+  return origin.replace(/\/+$/, "");
+}
+
+/**
+ * OAuth 2.0 Protected Resource Metadata (RFC 9728) — points clients at WorkOS.
+ * Null when WORKOS_AUTHORIZATION_SERVER is unset: the caller answers 503
+ * rather than advertising a guessed host.
+ */
+export function protectedResourceMetadata(
+  env: Env,
+): Record<string, unknown> | null {
+  const issuer = authorizationServer(env);
+  if (!issuer) return null;
   return {
     resource: resourceUrl(env),
-    authorization_servers: [
-      env.WORKOS_AUTHORIZATION_SERVER || "https://api.workos.com",
-    ],
+    authorization_servers: [issuer],
     bearer_methods_supported: ["header"],
     // NO scopes_supported, deliberately.
     //
