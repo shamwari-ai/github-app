@@ -20,7 +20,8 @@ import {
 
 const env = () =>
   ({
-    WORKOS_AUTHORIZATION_SERVER: "https://accounts.mukoko.com",
+    // Test fixture: the issuer is configuration, never a default in code.
+    WORKOS_AUTHORIZATION_SERVER: "https://identity.example.test",
   }) as unknown as Env;
 
 const send = (parts: unknown[], over: Record<string, unknown> = {}) => ({
@@ -33,7 +34,7 @@ const send = (parts: unknown[], over: Record<string, unknown> = {}) => ({
 // --- the card -------------------------------------------------------------
 
 test("the card declares the 1.0 protocol version", () => {
-  const c = agentCard(env(), "https://github.shamwari.ai");
+  const c = agentCard(env(), "https://github.shamwari.ai")!;
   assert.equal(c.protocolVersion, A2A_PROTOCOL_VERSION);
   assert.equal(c.url, "https://github.shamwari.ai/a2a");
 });
@@ -61,12 +62,17 @@ test("the security scheme uses the v1.0 member-name discriminator", () => {
   assert.ok(schemes.workos.openIdConnectSecurityScheme);
   assert.match(
     schemes.workos.openIdConnectSecurityScheme.openIdConnectUrl ?? "",
-    /accounts\.mukoko\.com\/\.well-known\/openid-configuration/,
+    /identity\.example\.test\/\.well-known\/openid-configuration/,
   );
 });
 
+test("the card fails closed when WORKOS_AUTHORIZATION_SERVER is unset", () => {
+  // No compiled-in authorization server: the caller answers 503.
+  assert.equal(agentCard({} as unknown as Env, "https://x.test"), null);
+});
+
 test("the card says plainly that it cannot approve", () => {
-  const c = agentCard(env(), "https://x.test");
+  const c = agentCard(env(), "https://x.test")!;
   assert.match(String(c.description), /[Cc]annot approve/);
 });
 
