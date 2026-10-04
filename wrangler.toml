@@ -78,6 +78,11 @@ WORKOS_REQUIRED_PERMISSIONS = "mongodb:access"
 # and $0.003 on the flash variant. At this repository's volume the difference
 # is a few dollars a year: choose on whether the review is worth reading, not
 # on price. GLM 5.3 requires a Workers Paid plan.
+#
+# It may also name a dynamic route on the gateway, e.g. "dynamic/review" on
+# fundi, so the model choice lives in gateway configuration. The code
+# speaks both request shapes. Switch only once that route exists on the
+# gateway: a route that is not there fails every review.
 REVIEW_MODEL = "@cf/zai-org/glm-5.3"
 
 # The handle that summons a review in a pull request comment. A var, not a
@@ -91,7 +96,13 @@ REVIEW_MENTION = "@shamwari"
 # the association in the webhook payload, so it costs no extra call.
 REVIEW_TRIGGER_ASSOCIATIONS = "OWNER,MEMBER,COLLABORATOR"
 
-# AI Gateway every review's inference is routed through. Each call is logged
+# AI Gateway every review's inference is routed through: `fundi`, the
+# internal gateway for Nyuchi's own agents and pipelines (owner, 2026-10-04:
+# "all agents carry the fundi name"; authenticated, no cache, no guardrails).
+# A review is an agent run fired by a GitHub event or a team member's
+# mention, not a consumer using an app, so it does not ride the consumer
+# `shamwari` gateway, and it is not staff chat (`nyuchi-ai`). The
+# binding is pre-authenticated in-account, so no gateway token is stored. Each call is logged
 # with { repo, trigger } metadata attached, so "what did this repository cost
 # this month" is a query rather than an estimate — and caching, retries and
 # rate limits become gateway configuration instead of code in this worker.
@@ -101,7 +112,7 @@ REVIEW_TRIGGER_ASSOCIATIONS = "OWNER,MEMBER,COLLABORATOR"
 # It lives here and not in the dashboard because `wrangler deploy` REPLACES
 # the whole [vars] block: a value set only in the dashboard is silently
 # dropped by the next deploy, exactly as the GITHUB_APP_ID note above warns.
-AI_GATEWAY_ID = "shamwari"
+AI_GATEWAY_ID = "fundi"
 
 # KILL SWITCH. Set to exactly "false" to make every review call fail closed
 # without a code deploy.
@@ -155,7 +166,9 @@ head_sampling_rate = 1
 invocation_logs = true
 persist = true
 
+# Traces on (owner decision 2026-10-04): every review is an `invoke_agent`
+# span with a nested `chat` span, METADATA ONLY — see src/tracing.ts.
 [observability.traces]
-enabled = false
+enabled = true
 head_sampling_rate = 1
 persist = true
