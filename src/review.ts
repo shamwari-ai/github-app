@@ -24,6 +24,7 @@ import {
   getPullRequestDiff,
   listCommitComments,
 } from "./github";
+import { identity, inSpan } from "./tracing";
 
 /** Workers AI models known to do function calling and structured output. */
 export const REVIEW_MODELS = {
@@ -440,6 +441,12 @@ export interface ReviewOptions {
 }
 
 /**
+ * The opaque id a review's spans are grouped under: the repository plus the
+ * pull request number or the commit. Public identifiers, never content.
+ */
+type Conversation = string;
+
+/**
  * Review a diff. The part that does not care where the diff came from.
  */
 async function reviewDiff(
@@ -447,6 +454,7 @@ async function reviewDiff(
   repo: string,
   diff: string,
   opts: ReviewOptions,
+  conversation: Conversation,
 ): Promise<ReviewResult> {
   const model = opts.model || env.REVIEW_MODEL || REVIEW_MODELS[DEFAULT_MODEL];
   const maxDiffBytes =
@@ -469,26 +477,52 @@ async function reviewDiff(
     };
   }
 
-  const out = (await env.AI!.run(
-    model,
+  // The model call is the agent's one `chat` span. Metadata only: the model
+  // id, the diff's size and whether it was cut — never the diff, the prompt or
+  // the response (see tracing.ts).
+  const out = await inSpan(
+    "chat",
     {
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        {
-          role: "user",
-          content: `Repository: ${repo}\n\nAnnotated diff. Lines this change ADDS start with "+" and carry their new-file line number before the "|"; only those are valid finding targets.\n\n${sent}`,
-        },
-      ],
-      response_format: { type: "json_schema", json_schema: FINDINGS_SCHEMA },
+      ...identity("chat", conversation),
+      "gen_ai.request.model": model,
+      "review.diff_bytes": sent.length,
+      "review.truncated": truncated,
     },
-    // The gateway is the THIRD argument, not a field of the input object —
-    // putting it in the input silently does nothing and the call still
-    // succeeds, so the mistake shows up as a gateway with no traffic rather
-    // than as an error.
-    gatewayOptions(env, repo, opts),
-  )) as { response?: unknown };
+    async (span) => {
+      const res = (await env.AI!.run(
+        model,
+        {
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            {
+              role: "user",
+              content: `Repository: ${repo}\n\nAnnotated diff. Lines this change ADDS start with "+" and carry their new-file line number before the "|"; only those are valid finding targets.\n\n${sent}`,
+            },
+          ],
+          response_format: responseFormat(model),
+        },
+        // The gateway is the THIRD argument, not a field of the input object —
+        // putting it in the input silently does nothing and the call still
+        // succeeds, so the mistake shows up as a gateway with no traffic rather
+        // than as an error.
+        gatewayOptions(env, repo, opts),
+      )) as ModelResponse;
+      const usage = res?.usage ?? {};
+      span?.setAttributes({
+        "gen_ai.usage.input_tokens":
+          typeof usage.prompt_tokens === "number"
+            ? usage.prompt_tokens
+            : undefined,
+        "gen_ai.usage.output_tokens":
+          typeof usage.completion_tokens === "number"
+            ? usage.completion_tokens
+            : undefined,
+      });
+      return res;
+    },
+  );
 
-  const { summary, findings } = parseFindings(out?.response);
+  const { summary, findings } = parseFindings(modelOutput(out));
   const { anchored, unanchored } = anchor(findings, addedLines);
 
   return {
@@ -514,7 +548,7 @@ async function reviewDiff(
  * reviewed twice is a person asking for a second opinion, and handing back
  * the first one verbatim answers a question nobody asked.
  */
-function gatewayOptions(
+export function gatewayOptions(
   env: Env,
   repo: string,
   opts: ReviewOptions,
@@ -524,9 +558,48 @@ function gatewayOptions(
     gateway: {
       id: env.AI_GATEWAY_ID,
       skipCache: true,
-      metadata: { repo, trigger: opts.trigger ?? "manual" },
+      // Attribution only, and at most five scalars (the gateway's limit). The
+      // trigger is reduced to its KIND: "mention:<login>" names a person, and
+      // a GitHub login has no business in a cost log.
+      metadata: {
+        worker: "shamwari-github-mcp",
+        job: "pr_review",
+        repo,
+        trigger: (opts.trigger ?? "manual").split(":")[0],
+      },
     },
   };
+}
+
+/**
+ * A gateway dynamic route (`dynamic/<route>`) speaks the OpenAI chat
+ * completions shape only; a Workers AI model id speaks the native one. The
+ * difference is the structured-output request and where the answer comes
+ * back, so REVIEW_MODEL can name either without a code change.
+ */
+export function isDynamicRoute(model: string): boolean {
+  return model.startsWith("dynamic/");
+}
+
+export function responseFormat(model: string): Record<string, unknown> {
+  return isDynamicRoute(model)
+    ? {
+        type: "json_schema",
+        json_schema: { name: "review_findings", schema: FINDINGS_SCHEMA },
+      }
+    : { type: "json_schema", json_schema: FINDINGS_SCHEMA };
+}
+
+interface ModelResponse {
+  response?: unknown;
+  choices?: Array<{ message?: { content?: unknown } }>;
+  usage?: Record<string, unknown>;
+}
+
+/** The model's answer, from either response shape. */
+export function modelOutput(out: ModelResponse | undefined): unknown {
+  if (out?.response !== undefined) return out.response;
+  return out?.choices?.[0]?.message?.content;
 }
 
 /** The guards that must pass before anything is fetched or spent. */
@@ -591,9 +664,26 @@ export async function reviewPush(
   opts: ReviewOptions = {},
 ): Promise<ReviewResult> {
   assertRunnable(env);
-  const diff = await compareCommits(env, repo, before, after);
-  const result = await reviewDiff(env, repo, diff, opts);
-  return post(env, repo, after, result, opts);
+  const conversation = `${repo}@${after.slice(0, 12)}`;
+  return inSpan(
+    "invoke_agent",
+    {
+      ...identity("invoke_agent", conversation),
+      "review.trigger": triggerKind(opts),
+    },
+    async (span) => {
+      const skipped = await skipIfReviewed(env, repo, after, opts);
+      if (skipped) {
+        span?.setAttributes({ "review.skipped": "already reviewed" });
+        return skipped;
+      }
+      const diff = await compareCommits(env, repo, before, after);
+      const result = await reviewDiff(env, repo, diff, opts, conversation);
+      const posted = await post(env, repo, after, result, opts);
+      span?.setAttributes(outcome(posted));
+      return posted;
+    },
+  );
 }
 
 /**
@@ -615,15 +705,75 @@ export async function reviewPullRequest(
   headSha?: string,
 ): Promise<ReviewResult> {
   assertRunnable(env);
-  const diff = await getPullRequestDiff(env, repo, number);
-  const result = await reviewDiff(env, repo, diff, opts);
-  if (!opts.post) return result;
-  if (!headSha) {
+  if (opts.post && !headSha) {
     throw new GitHubError(
       "cannot post a review without the head commit sha",
       400,
       null,
     );
   }
-  return post(env, repo, headSha, result, opts);
+  const conversation = `${repo}#${number}`;
+  return inSpan(
+    "invoke_agent",
+    {
+      ...identity("invoke_agent", conversation),
+      "review.trigger": triggerKind(opts),
+    },
+    async (span) => {
+      if (headSha) {
+        const skipped = await skipIfReviewed(env, repo, headSha, opts);
+        if (skipped) {
+          span?.setAttributes({ "review.skipped": "already reviewed" });
+          return skipped;
+        }
+      }
+      const diff = await getPullRequestDiff(env, repo, number);
+      const result = await reviewDiff(env, repo, diff, opts, conversation);
+      if (!opts.post) return result;
+      const posted = await post(env, repo, headSha!, result, opts);
+      span?.setAttributes(outcome(posted));
+      return posted;
+    },
+  );
+}
+
+function triggerKind(opts: ReviewOptions): string {
+  return (opts.trigger ?? "manual").split(":")[0];
+}
+
+function outcome(r: ReviewResult): Record<string, string | number | boolean> {
+  return {
+    "review.posted": r.posted,
+    "review.findings": r.findings.length,
+    "review.unanchored": r.unanchored.length,
+  };
+}
+
+/**
+ * Answer "already reviewed" BEFORE the model is called.
+ *
+ * post() has always refused to write a second review on a commit, but it
+ * asked only after the diff had been fetched and the model had been paid to
+ * read it — so a webhook redelivery or a re-request bought a full review and
+ * then threw it away. Asking first costs one GitHub read and saves the model
+ * call. post() still checks again, which covers two deliveries racing.
+ */
+async function skipIfReviewed(
+  env: Env,
+  repo: string,
+  sha: string,
+  opts: ReviewOptions,
+): Promise<ReviewResult | null> {
+  if (!opts.post || opts.force) return null;
+  if (!(await alreadyReviewed(env, repo, sha))) return null;
+  return {
+    model: opts.model || env.REVIEW_MODEL || REVIEW_MODELS[DEFAULT_MODEL],
+    summary: "",
+    findings: [],
+    unanchored: [],
+    truncated: false,
+    posted: false,
+    sha,
+    skipped: "already reviewed",
+  };
 }

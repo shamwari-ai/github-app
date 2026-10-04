@@ -11,6 +11,9 @@ import type { Env } from "../src/env";
 import {
   anchor,
   annotateDiff,
+  gatewayOptions,
+  modelOutput,
+  responseFormat,
   parseFindings,
   rank,
   renderBody,
@@ -301,4 +304,67 @@ test("a missing AI binding says what to add rather than throwing on undefined", 
     ),
     /wrangler\.toml/,
   );
+});
+
+// --- the gateway call -----------------------------------------------------
+
+test("gateway metadata attributes cost without naming a person", () => {
+  const opts = gatewayOptions(
+    { AI_GATEWAY_ID: "fundi" } as unknown as Env,
+    "nyuchi/web-services",
+    { trigger: "mention:someone" },
+  ) as { gateway: { id: string; skipCache: boolean; metadata: object } };
+  assert.equal(opts.gateway.id, "fundi");
+  assert.equal(opts.gateway.skipCache, true);
+  assert.deepEqual(opts.gateway.metadata, {
+    worker: "shamwari-github-mcp",
+    job: "pr_review",
+    repo: "nyuchi/web-services",
+    trigger: "mention",
+  });
+  // The gateway accepts at most five metadata entries.
+  assert.ok(Object.keys(opts.gateway.metadata).length <= 5);
+});
+
+test("no gateway configured means calling Workers AI directly", () => {
+  assert.equal(gatewayOptions({} as Env, "nyuchi/web-services", {}), undefined);
+});
+
+test("asking to post without a head sha fails before the model is paid", async () => {
+  let calls = 0;
+  await assert.rejects(
+    reviewPullRequest(
+      {
+        REVIEW_ENABLED: "true",
+        AI: {
+          run: async () => {
+            calls++;
+            return {};
+          },
+        },
+      } as unknown as Env,
+      "nyuchi/web-services",
+      1,
+      { post: true },
+    ),
+    /head commit sha/,
+  );
+  assert.equal(calls, 0);
+});
+
+test("a dynamic route gets the OpenAI response_format and answer shape", () => {
+  assert.deepEqual(
+    Object.keys(responseFormat("dynamic/review").json_schema as object),
+    ["name", "schema"],
+  );
+  assert.equal(
+    (responseFormat("@cf/zai-org/glm-5.3").json_schema as { type: string })
+      .type,
+    "object",
+  );
+  assert.equal(
+    modelOutput({ choices: [{ message: { content: "{}" } }] }),
+    "{}",
+  );
+  assert.deepEqual(modelOutput({ response: { summary: "" } }), { summary: "" });
 });
