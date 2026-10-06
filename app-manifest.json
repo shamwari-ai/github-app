@@ -1,0 +1,22 @@
+{
+  "name": "Shamwari for GitHub",
+  "url": "https://github.shamwari.ai",
+  "description": "Reviews pull requests and triages issues for Shamwari. Comment @shamwari on a pull request to ask for a review. It comments; it never approves or merges.",
+  "public": true,
+  "hook_attributes": {
+    "url": "https://github.shamwari.ai/webhook",
+    "active": true
+  },
+  "redirect_url": "https://github.shamwari.ai/github-app/created",
+  "setup_url": "https://github.shamwari.ai/github-app/installed",
+  "setup_on_update": false,
+  "request_oauth_on_install": false,
+  "default_permissions": {
+    "metadata": "read",
+    "contents": "read",
+    "checks": "read",
+    "pull_requests": "write",
+    "issues": "write"
+  },
+  "default_events": ["pull_request", "issue_comment"]
+}
