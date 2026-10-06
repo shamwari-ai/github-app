@@ -31,6 +31,7 @@ import {
 } from "./protocol";
 import { handleWebhook } from "./webhook";
 import { agentCard, handleA2A, type A2ARequest } from "./a2a";
+import { appCreated, appInstalled, appNew } from "./setup";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -172,6 +173,19 @@ export default {
       const meta = protectedResourceMetadata(env, resource);
       if (!meta) return json({ error: AUTHORIZATION_SERVER_MISSING }, 503);
       return json(meta);
+    }
+
+    // GitHub App setup pages (manifest redirect and post-install). Public:
+    // GitHub sends a browser here, and neither page holds or exchanges
+    // anything. See src/setup.ts.
+    if (request.method === "GET" && url.pathname === "/github-app/created") {
+      return appCreated(url);
+    }
+    if (request.method === "GET" && url.pathname === "/github-app/new") {
+      return appNew();
+    }
+    if (request.method === "GET" && url.pathname === "/github-app/installed") {
+      return appInstalled();
     }
 
     const isA2A = url.pathname === "/a2a";
