@@ -59,6 +59,15 @@ GITHUB_TOKEN_PERMISSIONS = "pull_requests:write,issues:write,contents:read,metad
 # is set.
 MCP_RESOURCE_URL = "https://github.shamwari.ai/mcp"
 
+# Other hostnames this same worker answers on. The resource metadata names
+# whichever host served the request (https://<host>/mcp), so it can never
+# disagree with the URL a client connected to. github.nyuchi.dev is listed so
+# it keeps working once it is routed here (the old nyuchi-github-mcp worker
+# served it with MCP_RESOURCE_URL mistyped as github.shmwari.ai, which made
+# every MCP client abandon OAuth). A host not listed here gets the canonical
+# URL above, never a reflection of an arbitrary Host header.
+MCP_RESOURCE_HOSTS = "github.shamwari.ai,github.nyuchi.dev"
+
 # Authorization policy (public, versioned for auditability).
 # Org gate: Nyuchi Africa members only — blocks every other WorkOS org.
 WORKOS_ORG_ID = "org_01KRDAB894DJF5V38PT5617TV1"

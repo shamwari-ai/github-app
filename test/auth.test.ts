@@ -281,3 +281,26 @@ test("callerIdentity records who the agent acts for", async () => {
   });
   assert.equal(autonomous.onBehalfOf, undefined);
 });
+
+test("a token for the served resource is accepted without a static audience", async () => {
+  // The audience list used to be the only source of truth, and a typo in it
+  // (or in MCP_RESOURCE_URL) locked every client out. The resource the
+  // request was served under is always acceptable.
+  const claims = await verifyWorkosToken(
+    await mintToken({ ...goodClaims, aud: "https://github.nyuchi.dev/mcp" }),
+    env({ WORKOS_AUDIENCE: undefined }),
+    "https://github.nyuchi.dev/mcp",
+  );
+  assert.equal(claims.aud, "https://github.nyuchi.dev/mcp");
+});
+
+test("serving a resource does not widen the audience to other resources", async () => {
+  await assert.rejects(
+    verifyWorkosToken(
+      await mintToken({ ...goodClaims, aud: "https://mongodb.nyuchi.dev/mcp" }),
+      env(),
+      "https://github.nyuchi.dev/mcp",
+    ),
+    /audience mismatch/,
+  );
+});
