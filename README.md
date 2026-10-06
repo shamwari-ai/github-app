@@ -3,8 +3,13 @@
 > A Cloudflare Worker that reviews pull requests and exposes GitHub review,
 > pull request and issue operations as an MCP server.
 
-Served at **`https://github.shamwari.ai`**. The GitHub App is **Shamwari for
-GitHub**; comment `@shamwari` on a pull request to summon a review.
+Served at **`https://github.shamwari.ai`** (MCP endpoint
+`https://github.shamwari.ai/mcp`). The GitHub App is **Shamwari for GitHub**,
+owned by the shamwari-ai organisation (see [docs/github-app.md](docs/github-app.md)).
+Comment `@shamwari` on a pull request to summon a review.
+
+This repository was split out of `nyuchi/web-services` (`worker/`) with its
+history. Contributor and agent rules: [AGENTS.md](AGENTS.md).
 
 Sibling of [`nyuchi-fly-mcp`](https://github.com/nyuchi/mukoko-platform/tree/main/fly-mcp):
 same transport (MCP Streamable HTTP / JSON-RPC 2.0), same WorkOS Connect auth,
