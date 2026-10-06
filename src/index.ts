@@ -16,7 +16,7 @@ import {
   callerIdentity,
   AUTHORIZATION_SERVER_MISSING,
   protectedResourceMetadata,
-  resourceUrl,
+  resourceUrlFor,
   verifyWorkosToken,
 } from "./auth";
 import { handleRpc } from "./mcp";
@@ -88,11 +88,21 @@ function json(body: unknown, status = 200): Response {
 }
 
 /** 401 pointing MCP clients at the OAuth resource metadata (WorkOS). */
-function unauthorized(env: Env, message: string): Response {
+function unauthorized(
+  resource: string,
+  message: string,
+  invalidToken = false,
+): Response {
   const metaUrl = new URL(
     "/.well-known/oauth-protected-resource",
-    resourceUrl(env),
+    resource,
   ).toString();
+  // RFC 6750: a presented-but-rejected token is `invalid_token`, and the
+  // description names the gate that refused it (never the token or its
+  // claims) so a client-side "authorization failed" can be diagnosed.
+  const challenge = invalidToken
+    ? `Bearer resource_metadata="${metaUrl}", error="invalid_token", error_description="${message.replace(/["\\]/g, "")}"`
+    : `Bearer resource_metadata="${metaUrl}"`;
   return new Response(
     JSON.stringify({
       jsonrpc: "2.0",
@@ -103,7 +113,7 @@ function unauthorized(env: Env, message: string): Response {
       status: 401,
       headers: {
         "Content-Type": "application/json",
-        "WWW-Authenticate": `Bearer resource_metadata="${metaUrl}"`,
+        "WWW-Authenticate": challenge,
         ...CORS,
       },
     },
@@ -151,8 +161,15 @@ export default {
 
     // OAuth 2.0 Protected Resource Metadata — public, so clients can discover
     // WorkOS as the authorization server.
-    if (url.pathname === "/.well-known/oauth-protected-resource") {
-      const meta = protectedResourceMetadata(env);
+    // Served at the root form and at the path-suffixed form RFC 9728 derives
+    // from the resource URL (/.well-known/oauth-protected-resource/mcp); some
+    // clients ask for one, some the other.
+    const resource = resourceUrlFor(request, env);
+    if (
+      url.pathname === "/.well-known/oauth-protected-resource" ||
+      url.pathname === "/.well-known/oauth-protected-resource/mcp"
+    ) {
+      const meta = protectedResourceMetadata(env, resource);
       if (!meta) return json({ error: AUTHORIZATION_SERVER_MISSING }, 503);
       return json(meta);
     }
@@ -171,7 +188,7 @@ export default {
 
     // Servers MUST validate Origin to prevent DNS rebinding. Absent Origin is
     // allowed: non-browser MCP clients do not send one.
-    if (!originAllowed(request.headers.get("Origin"), resourceUrl(env))) {
+    if (!originAllowed(request.headers.get("Origin"), resource)) {
       return json({ error: "forbidden origin" }, 403);
     }
 
@@ -183,10 +200,10 @@ export default {
       // request log alone cannot distinguish "client sent no token" from
       // "token was rejected" — and those have completely different causes.
       console.warn("auth rejected: no bearer token presented");
-      return unauthorized(env, "missing bearer token");
+      return unauthorized(resource, "missing bearer token");
     }
     try {
-      const claims = await verifyWorkosToken(token, env);
+      const claims = await verifyWorkosToken(token, env, resource);
       // Logged on every accepted call, because "an agent did this" and "an
       // agent did this FOR someone" are different answers to the question
       // asked after something goes wrong, and the token is the only place
@@ -206,7 +223,7 @@ export default {
       // The response stays generic; the log names the gate and what the token
       // carried. Never log the token itself.
       console.warn(`auth rejected: ${message}${detail ? ` — ${detail}` : ""}`);
-      return unauthorized(env, message);
+      return unauthorized(resource, message, true);
     }
 
     if (request.method !== "POST") {

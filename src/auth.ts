@@ -89,6 +89,7 @@ async function getJwks(env: Env): Promise<Jwk[]> {
 export async function verifyWorkosToken(
   token: string,
   env: Env,
+  resource?: string,
 ): Promise<Record<string, unknown>> {
   const parts = token.split(".");
   if (parts.length !== 3) throw new AuthError("malformed token");
@@ -144,21 +145,29 @@ export async function verifyWorkosToken(
   // the MongoDB server could spend it here. The audience claim is the only
   // thing that binds a token to THIS resource, which is exactly the
   // confused-deputy case it exists to prevent.
-  if (!env.WORKOS_AUDIENCE) {
-    throw new AuthError(
-      "WorkOS auth is not configured (WORKOS_AUDIENCE unset)",
-    );
-  }
+  //
+  // The accepted audiences are WORKOS_AUDIENCE (comma-separated; the Connect
+  // client id and/or resource URI, because WorkOS stamps `aud` as either
+  // depending on the token flow) PLUS the resource URI this request was
+  // served under. A token minted for the resource the client discovered is
+  // therefore always accepted on that host, without an operator having to
+  // keep a static list in step with the hostnames: the static list is exactly
+  // what a typo broke. Tokens minted for any other resource are still
+  // refused. With neither a configured list nor a served resource, fail
+  // closed rather than skip the check.
   {
-    // WORKOS_AUDIENCE may list several acceptable audiences (comma-separated) —
-    // e.g. the Connect client id AND the resource URL — because WorkOS may
-    // stamp `aud` as either depending on the token flow. The token's `aud`
-    // may itself be a string or an array. Accept if any accepted value
-    // appears in the token's audiences; still rejects tokens minted for
-    // other apps.
-    const accepted = env.WORKOS_AUDIENCE.split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
+    const accepted = [
+      ...(env.WORKOS_AUDIENCE || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+      ...(resource ? [resource] : []),
+    ];
+    if (!accepted.length) {
+      throw new AuthError(
+        "WorkOS auth is not configured (WORKOS_AUDIENCE unset)",
+      );
+    }
     const audClaim = claims.aud;
     const tokenAuds = Array.isArray(audClaim)
       ? audClaim
@@ -268,8 +277,53 @@ export function callerIdentity(claims: Record<string, unknown>): {
   };
 }
 
+/** The canonical resource, used when a request arrives on no allowed host. */
+export const DEFAULT_RESOURCE_URL = "https://github.shamwari.ai/mcp";
+
+/** The configured canonical resource URL, or the default. */
 export function resourceUrl(env: Env): string {
-  return env.MCP_RESOURCE_URL || "https://github.shamwari.ai/mcp";
+  return env.MCP_RESOURCE_URL || DEFAULT_RESOURCE_URL;
+}
+
+/**
+ * Hosts this worker may name itself under: MCP_RESOURCE_HOSTS plus the host
+ * of the canonical MCP_RESOURCE_URL. Lower-cased; ports kept as given.
+ */
+export function allowedResourceHosts(env: Env): string[] {
+  const hosts = splitCsv(env.MCP_RESOURCE_HOSTS).map((h) => h.toLowerCase());
+  try {
+    hosts.push(new URL(resourceUrl(env)).host.toLowerCase());
+  } catch {
+    // An unparseable MCP_RESOURCE_URL contributes nothing.
+  }
+  return [...new Set(hosts)];
+}
+
+/**
+ * The resource URI for THIS request: `https://<served host>/mcp`.
+ *
+ * RFC 9728 requires the `resource` in the metadata to be the URL the client
+ * is actually talking to; an MCP client that sees anything else refuses to
+ * continue. Deriving it from the request means the metadata can never
+ * disagree with the host serving it, which is exactly what the static
+ * MCP_RESOURCE_URL on github.nyuchi.dev did (it named "github.shmwari.ai").
+ *
+ * Only an allowlisted host (or this worker's own *.workers.dev preview host)
+ * is reflected. Anything else gets the canonical URL, so the worker never
+ * names itself after an arbitrary Host header.
+ */
+export function resourceUrlFor(request: Request, env: Env): string {
+  let url: URL;
+  try {
+    url = new URL(request.url);
+  } catch {
+    return resourceUrl(env);
+  }
+  const host = url.host.toLowerCase();
+  const allowed =
+    allowedResourceHosts(env).includes(host) || host.endsWith(".workers.dev");
+  if (!allowed || url.protocol !== "https:") return resourceUrl(env);
+  return `https://${host}/mcp`;
 }
 
 export const AUTHORIZATION_SERVER_MISSING =
@@ -325,11 +379,12 @@ export function authorizationServer(env: Env): string | null {
  */
 export function protectedResourceMetadata(
   env: Env,
+  resource: string = resourceUrl(env),
 ): Record<string, unknown> | null {
   const issuer = authorizationServer(env);
   if (!issuer) return null;
   return {
-    resource: resourceUrl(env),
+    resource,
     authorization_servers: [issuer],
     bearer_methods_supported: ["header"],
     // NO scopes_supported, deliberately.

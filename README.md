@@ -167,6 +167,23 @@ holds the Nyuchi Africa org, `org_01KRDAB894DJF5V38PT5617TV1`). Until it is,
 WorkOS will not mint a token scoped to this resource and verification fails on
 `audience mismatch`.
 
+**Every host this worker serves needs its own registered resource.** The
+registered list on 2026-10-06 held `https://github.nyuchi.dev/mcp` but not
+`https://github.shamwari.ai/mcp`, which is why the connector failed on the
+shamwari host with "Authorization failed".
+
+### The resource URI comes from the request
+
+The metadata's `resource` is `https://<host that served the request>/mcp`
+whenever that host is in `MCP_RESOURCE_HOSTS` (or is the host of
+`MCP_RESOURCE_URL`, or this worker's own `*.workers.dev` preview). Any other
+Host gets the canonical `MCP_RESOURCE_URL`, never a reflection. The served
+resource URI is also always an accepted `aud`, on top of `WORKOS_AUDIENCE`, so
+a token minted for the resource a client discovered is never refused for a
+stale static list — while a token for any other resource still is.
+`test/resource.test.ts` pins both, including the 2026-10-06 typo
+(`github.shmwari.ai`) that took the old github.nyuchi.dev worker offline.
+
 The two authorization gates are checked against that same environment:
 `platform-team` is the slug of the **Platform Team** role, and `mongodb:access`
 is a permission it holds.
@@ -179,7 +196,8 @@ step, which is one fewer thing to get wrong. `test/der.test.ts` checks the
 wrapper against OpenSSL's own output at 2048, 3072 and 4096 bits.
 
 All three are required. `verifyWorkosToken` refuses outright when any of
-`WORKOS_JWKS_URL`, `WORKOS_ISSUER` or `WORKOS_AUDIENCE` is unset, rather than
+`WORKOS_JWKS_URL` or `WORKOS_ISSUER` is unset, or when there is no audience at
+all (no `WORKOS_AUDIENCE` and no served resource), rather than
 treating a missing value as "skip that check" — an unset audience would
 otherwise let a token minted for any other MCP resource in the same WorkOS
 environment be spent here. `test/auth.test.ts` pins that.
