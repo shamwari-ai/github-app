@@ -2,18 +2,27 @@
   "name": "shamwari-github-mcp",
   "version": "0.1.0",
   "private": true,
-  "description": "Cloudflare Worker MCP server for GitHub review, pull request and issue operations",
+  "description": "Shamwari for GitHub: GitHub App and MCP server on Cloudflare Workers (github.shamwari.ai)",
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit",
+    "check": "vp check",
+    "lint": "vp lint",
+    "fmt": "vp fmt",
+    "test": "tsx --test test/*.test.ts",
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "test": "tsx --test test/*.test.ts"
+    "deploy": "wrangler deploy"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260721.1",
+    "@types/node": "^22.20.5",
     "tsx": "^4.23.13",
     "typescript": "^5.9.3",
+    "vite-plus": "^1.0.0",
     "wrangler": "^4.147.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shamwari-ai/github-app.git"
   }
 }
