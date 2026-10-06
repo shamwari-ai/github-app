@@ -110,7 +110,7 @@ async function call(
     },
     ...(method === "POST" ? { body: JSON.stringify(body) } : {}),
   });
-  const res = await worker.fetch(req, env());
+  const res = await worker.fetch(req, env(), {} as ExecutionContext);
   const text = await res.text();
   return { status: res.status, body: text ? JSON.parse(text) : null };
 }
@@ -245,7 +245,7 @@ test("no bearer token is still 401, whatever the era", async () => {
     },
     body: JSON.stringify(modern("tools/list")),
   });
-  const res = await worker.fetch(req, env());
+  const res = await worker.fetch(req, env(), {} as ExecutionContext);
   assert.equal(res.status, 401);
 });
 
