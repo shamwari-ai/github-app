@@ -13,7 +13,13 @@ preview_urls = true
 
 # Custom domain on the nyuchi.dev zone, matching fly.nyuchi.dev. Wrangler
 # provisions the cert and DNS record for the hostname on deploy.
-routes = [{ pattern = "github.shamwari.ai", custom_domain = true }]
+# github.nyuchi.dev is the legacy host (the "Nyuchi Triage" connector). It is
+# served by this same Worker; the resource metadata names whichever host was
+# requested (MCP_RESOURCE_HOSTS), so both hosts work without a redirect.
+routes = [
+  { pattern = "github.shamwari.ai", custom_domain = true },
+  { pattern = "github.nyuchi.dev", custom_domain = true },
+]
 
 # Stable, non-secret defaults. The private key is a SECRET (see below); every
 # value here is public policy, versioned so a change to what the agent may
