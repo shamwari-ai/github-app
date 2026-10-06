@@ -36,6 +36,10 @@ export interface Env {
   WORKOS_AUDIENCE?: string; // accepted `aud` values, comma-separated
   WORKOS_AUTHORIZATION_SERVER?: string; // AuthKit issuer advertised in resource metadata + agent card — required secret, no default
   MCP_RESOURCE_URL?: string; // this resource's canonical URL
+  // Other hosts this same worker serves, comma-separated (e.g.
+  // "github.nyuchi.dev"). A request on one of them is answered with
+  // resource https://<that host>/mcp, so metadata always matches the URL.
+  MCP_RESOURCE_HOSTS?: string;
 
   // ---- Review agent (Workers AI) ------------------------------------------
   // GitHub webhook shared secret. A SECRET, set with `wrangler secret put`.
