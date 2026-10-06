@@ -45,6 +45,7 @@ export const PROTOCOL_VERSION = LEGACY_VERSION;
 
 export const SERVER_INFO = {
   name: "shamwari-github-mcp",
+  title: "Shamwari for GitHub",
   version: "0.1.0",
 } as const;
 
