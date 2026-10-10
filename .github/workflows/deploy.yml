@@ -50,7 +50,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Metadata names the served host
         run: |
-          for host in github.shamwari.ai; do
+          for host in github.shamwari.ai github.nyuchi.dev; do
             got=$(curl -fsS "https://$host/.well-known/oauth-protected-resource" | jq -r .resource)
             test "$got" = "https://$host/mcp" || { echo "::error::$host advertises $got"; exit 1; }
           done

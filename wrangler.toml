@@ -13,7 +13,17 @@ preview_urls = true
 
 # Custom domain on the nyuchi.dev zone, matching fly.nyuchi.dev. Wrangler
 # provisions the cert and DNS record for the hostname on deploy.
-routes = [{ pattern = "github.shamwari.ai", custom_domain = true }]
+# github.nyuchi.dev is the older hostname for the same MCP. It used to be served
+# by a separate, dashboard-configured worker (nyuchi-github-mcp) whose
+# MCP_RESOURCE_URL was mistyped as https://github.shmwari.ai/mcp, so every MCP
+# client abandoned OAuth on that host. Routing it here instead means one worker,
+# one config in git, and per-host resource metadata (MCP_RESOURCE_HOSTS below):
+# github.nyuchi.dev advertises https://github.nyuchi.dev/mcp and
+# github.shamwari.ai advertises https://github.shamwari.ai/mcp.
+routes = [
+  { pattern = "github.shamwari.ai", custom_domain = true },
+  { pattern = "github.nyuchi.dev", custom_domain = true },
+]
 
 # Stable, non-secret defaults. The private key is a SECRET (see below); every
 # value here is public policy, versioned so a change to what the agent may
@@ -61,8 +71,8 @@ MCP_RESOURCE_URL = "https://github.shamwari.ai/mcp"
 
 # Other hostnames this same worker answers on. The resource metadata names
 # whichever host served the request (https://<host>/mcp), so it can never
-# disagree with the URL a client connected to. github.nyuchi.dev is listed so
-# it keeps working once it is routed here (the old nyuchi-github-mcp worker
+# disagree with the URL a client connected to. github.nyuchi.dev is listed
+# because it is routed here (see `routes` above) (the old nyuchi-github-mcp worker
 # served it with MCP_RESOURCE_URL mistyped as github.shmwari.ai, which made
 # every MCP client abandon OAuth). A host not listed here gets the canonical
 # URL above, never a reflection of an arbitrary Host header.
