@@ -15,8 +15,8 @@ preview_urls = true
 # provisions the cert and DNS record for the hostname on deploy.
 # github.nyuchi.dev is the older hostname for the same MCP. It used to be served
 # by a separate, dashboard-configured worker (nyuchi-github-mcp) whose
-# MCP_RESOURCE_URL was mistyped as https://github.shmwari.ai/mcp, so every MCP
-# client abandoned OAuth on that host. Routing it here instead means one worker,
+# MCP_RESOURCE_URL was mistyped (a "shmwari" host, missing its "a"), so every
+# MCP client abandoned OAuth on that host. Routing it here instead means one worker,
 # one config in git, and per-host resource metadata (MCP_RESOURCE_HOSTS below):
 # github.nyuchi.dev advertises https://github.nyuchi.dev/mcp and
 # github.shamwari.ai advertises https://github.shamwari.ai/mcp.
