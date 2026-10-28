@@ -79,6 +79,42 @@ Worker:
    this Worker's repositories, or leave it if release tooling still uses it.
    Remove its key from this Worker. It has already been overwritten in step 3.
 
+## Enterprise install (owner)
+
+All three organisations the App serves, `nyuchi`, `shamwari-ai` and
+`mukoko-dev`, are inside the **bundu-labs** enterprise
+(<https://github.com/enterprises/bundu-labs>; owner, 2026-10-28). Install the App
+once at that level, then add it to each organisation, rather than managing
+three separate installs by hand.
+
+1. An **enterprise owner** (an app manager cannot) opens the enterprise's
+   GitHub Apps settings and installs **Shamwari for GitHub** on the enterprise.
+   GitHub's steps:
+   <https://docs.github.com/en/enterprise-cloud@latest/apps/using-github-apps/installing-a-github-app-on-your-enterprise>.
+2. Install it on each organisation, choosing **selected repositories** only.
+   GitHub also has an API for installing an App on the organisations an
+   enterprise owns; it can only be called by an App installed on that
+   enterprise.
+3. Add every repository it should serve to `GITHUB_ALLOWED_REPOS` by pull
+   request. The allowlist stays the outer bound: an enterprise install alone
+   switches nothing on, and it is listed repository by repository, never by
+   wildcard.
+
+Two limits to check against GitHub's current documentation before relying on
+them (this section was written from the docs, not from a live install):
+
+- An App installed at the enterprise level does not receive webhooks for
+  enterprise-level events. This Worker only needs `pull_request` and
+  `issue_comment`, which are repository events.
+- Not every API supports enterprise-installed Apps. Installation access tokens
+  for repositories are still minted per organisation installation
+  (`src/github.ts`), so confirm that the per-organisation install exists for each
+  organisation, not just the enterprise one.
+
+The Worker needs no code change for this: it already mints a token per
+repository installation. The one change that does need code is switching
+`GITHUB_APP_ID` to the new App (step 4 above).
+
 ## Rotating
 
 - Private key: generate a new key in the App settings, put it in 1Password,
