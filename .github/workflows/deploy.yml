@@ -8,9 +8,9 @@ name: Deploy
 #                    (https://staging-shamwari-github-mcp.nyuchi.workers.dev),
 #                    never deployed, so production keeps serving main.
 #
-# Both are gated on the repository variable DEPLOY_ENABLED == 'true'. Until
-# the cut-over from nyuchi/web-services (which deploys the same Worker today)
-# it stays unset, so the two repos never race to deploy one Worker.
+# No variable or secret decides whether this runs: a merge to main deploys,
+# a merge to staging uploads a preview. The one Worker is deployed from this
+# repo only; nyuchi/web-services must not deploy it too, or the two race.
 #
 # CLOUDFLARE_API_TOKEN needs Workers Scripts: Edit on the Nyuchi Web Services
 # account and nothing else. The GitHub App key is a Worker secret set with
@@ -32,7 +32,7 @@ permissions:
 jobs:
   deploy:
     name: Deploy (main)
-    if: vars.DEPLOY_ENABLED == 'true' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -57,7 +57,7 @@ jobs:
 
   beta:
     name: Beta (preview version from staging)
-    if: vars.DEPLOY_ENABLED == 'true' && github.ref == 'refs/heads/staging'
+    if: github.ref == 'refs/heads/staging'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

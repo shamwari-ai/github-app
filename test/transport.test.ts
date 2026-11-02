@@ -13,7 +13,10 @@ import assert from "node:assert/strict";
 import { generateKeyPairSync, webcrypto } from "node:crypto";
 import worker from "../src/index";
 import type { Env } from "../src/env";
-import { MODERN_VERSION, LEGACY_VERSION } from "../src/protocol";
+import { parse } from "./mcp-helper";
+
+const MODERN_VERSION = "2026-07-28";
+const LEGACY_VERSION = "2025-06-18";
 
 const ISSUER = "https://accounts.mukoko.com";
 const AUDIENCE = "https://github.shamwari.ai/mcp";
@@ -112,14 +115,21 @@ async function call(
   });
   const res = await worker.fetch(req, env(), {} as ExecutionContext);
   const text = await res.text();
-  return { status: res.status, body: text ? JSON.parse(text) : null };
+  return { status: res.status, body: text ? parse(text) : null };
 }
 
 const modern = (method: string, params: Record<string, unknown> = {}) => ({
   jsonrpc: "2.0",
   id: 1,
   method,
-  params: { ...params, _meta: { [META]: MODERN_VERSION } },
+  params: {
+    ...params,
+    _meta: {
+      [META]: MODERN_VERSION,
+      "io.modelcontextprotocol/clientInfo": { name: "test", version: "1" },
+      "io.modelcontextprotocol/clientCapabilities": {},
+    },
+  },
 });
 
 const modernHeaders = (method: string, extra: Record<string, string> = {}) => ({
@@ -188,7 +198,12 @@ test("an unsupported version is 400 with the supported list", async () => {
     jsonrpc: "2.0",
     id: 1,
     method: "tools/list",
-    params: { _meta: { [META]: "1900-01-01" } },
+    params: {
+      _meta: {
+        [META]: "1900-01-01",
+        "io.modelcontextprotocol/clientCapabilities": {},
+      },
+    },
   };
   const r = await call(body, {
     "MCP-Protocol-Version": "1900-01-01",
@@ -214,7 +229,11 @@ test("initialize still answers with the legacy revision", async () => {
     jsonrpc: "2.0",
     id: 1,
     method: "initialize",
-    params: {},
+    params: {
+      protocolVersion: LEGACY_VERSION,
+      capabilities: {},
+      clientInfo: { name: "legacy-client", version: "1" },
+    },
   });
   assert.equal(r.status, 200);
   assert.equal(r.body.result.protocolVersion, LEGACY_VERSION);
