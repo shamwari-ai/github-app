@@ -19,16 +19,8 @@ import {
   resourceUrlFor,
   verifyWorkosToken,
 } from "./auth";
-import { handleRpc } from "./mcp";
-import {
-  HEADER_MISMATCH,
-  METHOD_NOT_FOUND,
-  UNSUPPORTED_PROTOCOL_VERSION,
-  detectEra,
-  originAllowed,
-  validateModernRequest,
-  type JsonRpcLike,
-} from "./protocol";
+import { handleMcp } from "./mcp";
+import { originAllowed } from "./origin";
 import { handleWebhook } from "./webhook";
 import { agentCard, handleA2A, type A2ARequest } from "./a2a";
 import { appCreated, appInstalled, appNew } from "./setup";
@@ -216,8 +208,23 @@ export default {
       console.warn("auth rejected: no bearer token presented");
       return unauthorized(resource, "missing bearer token");
     }
+    let authInfo: {
+      token: string;
+      clientId: string;
+      scopes: string[];
+      extra?: Record<string, unknown>;
+    };
     try {
       const claims = await verifyWorkosToken(token, env, resource);
+      const scope = (claims as Record<string, unknown>).scope;
+      authInfo = {
+        token,
+        clientId: String(
+          (claims as Record<string, unknown>).client_id ?? claims.sub ?? "",
+        ),
+        scopes:
+          typeof scope === "string" ? scope.split(" ").filter(Boolean) : [],
+      };
       // Logged on every accepted call, because "an agent did this" and "an
       // agent did this FOR someone" are different answers to the question
       // asked after something goes wrong, and the token is the only place
@@ -244,25 +251,24 @@ export default {
       return json({ error: "method not allowed" }, 405);
     }
 
-    let payload: unknown;
-    try {
-      payload = await request.json();
-    } catch {
-      return json(
-        {
-          jsonrpc: "2.0",
-          id: null,
-          error: { code: -32700, message: "parse error" },
-        },
-        400,
-      );
-    }
-
     // A2A shares this endpoint's authentication and nothing else. It is not
     // MCP: no protocol-version headers, no era detection, no batch. Handling
     // it here rather than in a second Worker is what lets one WorkOS token,
     // one App installation and one review engine serve both protocols.
     if (isA2A) {
+      let payload: unknown;
+      try {
+        payload = await request.json();
+      } catch {
+        return json(
+          {
+            jsonrpc: "2.0",
+            id: null,
+            error: { code: -32700, message: "parse error" },
+          },
+          400,
+        );
+      }
       try {
         const response = await handleA2A(payload as A2ARequest, env);
         return json(response ?? {});
@@ -271,61 +277,21 @@ export default {
       }
     }
 
-    // 2026-07-28 sends one JSON-RPC message per POST. Batches belong to the
-    // legacy revision, so they are answered but never version-validated.
-    if (Array.isArray(payload)) {
-      try {
-        const responses = (
-          await Promise.all(payload.map((m) => handleRpc(m, env)))
-        ).filter((r): r is object => r !== null);
-        return json(responses);
-      } catch (e) {
-        return internalError(null, e);
-      }
-    }
-
-    const body = payload as JsonRpcLike;
-    const era = detectEra(body);
-
-    // Modern requests mirror version, method and name into headers so
-    // intermediaries can route without parsing the body. Validating them here
-    // is what stops a proxy and this worker acting on different values.
-    if (era === "modern") {
-      const problem = validateModernRequest(request.headers, body);
-      if (problem) {
-        return rpcError(
-          body.id,
-          problem.code,
-          problem.message,
-          problem.status,
-          problem.data,
-        );
-      }
-    }
-
+    // MCP: the SDK parses the request, picks the protocol era, validates
+    // versions and headers, and answers. Everything above (method, Origin,
+    // WorkOS token) has already been decided here, and the verified token is
+    // handed over as authInfo rather than re-derived from headers.
     try {
-      const response = await handleRpc(body as never, env);
-      if (response === null)
-        return new Response(null, { status: 202, headers: CORS });
-
-      // An unknown method is 404 in the modern revision; the JSON-RPC body is
-      // what tells a client this is an MCP endpoint that lacks the method,
-      // rather than a URL that is not an MCP endpoint at all. Legacy clients
-      // keep getting 200, as their revision expects.
-      const rpcErr = (response as { error?: { code?: number } }).error;
-      if (era === "modern" && rpcErr?.code === METHOD_NOT_FOUND) {
-        return json(response, 404);
-      }
-      if (
-        era === "modern" &&
-        (rpcErr?.code === HEADER_MISMATCH ||
-          rpcErr?.code === UNSUPPORTED_PROTOCOL_VERSION)
-      ) {
-        return json(response, 400);
-      }
-      return json(response);
+      const response = await handleMcp(request, env, authInfo);
+      const headers = new Headers(response.headers);
+      for (const [k, v] of Object.entries(CORS)) headers.set(k, v);
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
     } catch (e) {
-      return internalError(body.id, e);
+      return internalError(null, e);
     }
   },
 };

@@ -27,5 +27,9 @@
   },
   "overrides": {
     "vite": ">=8.3.5"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.4.0",
+    "zod": "^4.6.7"
   }
 }

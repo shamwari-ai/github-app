@@ -248,41 +248,26 @@ Accepting `scope` widens the gate for agents only. A person with neither role
 nor permission is still refused, and there is a test that fails if that stops
 being true.
 
-## Protocol: dual-era
+## Protocol: the MCP SDK
 
-This server speaks two MCP revisions on one endpoint, which the spec
-explicitly allows ("a dual-era server MAY serve both eras concurrently on the
-same endpoint or process").
+MCP is served by the official TypeScript SDK (`@modelcontextprotocol/server`,
+v2) through `createMcpHandler`, which answers both protocol eras on one
+endpoint from one factory, statelessly, per request. This repository does not
+implement the protocol itself.
 
 | Revision     | Era    | How a client selects it                                                  |
 | ------------ | ------ | ------------------------------------------------------------------------ |
 | `2026-07-28` | modern | every request carries `_meta["io.modelcontextprotocol/protocolVersion"]` |
 | `2025-06-18` | legacy | an `initialize` handshake                                                |
 
-`2026-07-28` removed the `initialize` handshake, protocol-level sessions and
-the standalone GET stream. Serving only it would break every client that has
-already connected, so era is chosen by the shape of the request rather than by
-configuration: an `initialize` request is legacy by definition, anything
-declaring a version is modern, anything else is legacy.
+The SDK decides the era, validates the mirrored headers and the `_meta`
+envelope, and picks the status codes (an unknown modern method is 404, a header
+mismatch or unsupported version is 400). `GET` and `DELETE` on the endpoint are 405. Clients must send `Accept: application/json, text/event-stream`.
 
-On the modern path the transport rules are enforced:
-
-| Condition                                                                               |  Status | JSON-RPC code                                               |
-| --------------------------------------------------------------------------------------- | ------: | ----------------------------------------------------------- |
-| `MCP-Protocol-Version` / `Mcp-Method` / `Mcp-Name` missing or disagreeing with the body |     400 | `-32020` HeaderMismatch                                     |
-| Version not supported                                                                   |     400 | `-32022` UnsupportedProtocolVersion (with `data.supported`) |
-| Unknown method                                                                          | **404** | `-32601`                                                    |
-| `GET` or `DELETE` on the endpoint                                                       |     405 | —                                                           |
-| `Origin` present and not this resource's                                                |     403 | —                                                           |
-
-Those statuses are not cosmetic: a client uses them to decide whether the
-server is modern at all, and a wrong one sends it down the legacy fallback
-path. `Mcp-Name` values may arrive in the Base64 sentinel form
-`=?base64?...?=` and are decoded before comparison, so a non-ASCII tool name
-or resource URI is not mistaken for a mismatch.
-
-Legacy requests are not version-validated and keep returning 200 for a
-JSON-RPC error, as their revision expects.
+What stays in this Worker, in front of the SDK: the `Origin` check (403 when it
+is present and not this resource's), WorkOS token verification (the verified
+token is passed to the SDK as `authInfo`), the OAuth resource metadata, A2A and
+the webhook.
 
 `server/discover` is implemented (the modern spec requires it) and returns the
 supported versions, capabilities and server identity in one call.
@@ -546,7 +531,7 @@ GET|DELETE /mcp                              405 (sessions and GET streams are g
 
 ```
 src/env.ts      bindings and the csv helper
-src/protocol.ts era detection, mirrored-header validation, version constants
+src/origin.ts   the Origin check (the protocol itself is the MCP SDK's)
 src/auth.ts     WorkOS token verification (shared logic with nyuchi-fly-mcp)
 src/github.ts   App JWT, scoped installation tokens, REST operations
 src/review.ts   the review engine: diff annotation, the model call, anchoring
