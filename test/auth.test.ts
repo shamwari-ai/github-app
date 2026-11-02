@@ -173,16 +173,18 @@ test("the permission alone satisfies the gate", async () => {
   assert.equal(claims.org_id, ORG);
 });
 
-test("github:access alone satisfies the gate", async () => {
-  const claims = await verifyWorkosToken(
-    await mintToken({
-      ...goodClaims,
-      role: "member",
-      permissions: ["github:access"],
-    }),
-    env(),
+test("the retired mongodb:access permission no longer satisfies the gate", async () => {
+  await assert.rejects(
+    verifyWorkosToken(
+      await mintToken({
+        ...goodClaims,
+        role: "member",
+        permissions: ["mongodb:access"],
+      }),
+      env(),
+    ),
+    /missing required platform role\/permission/,
   );
-  assert.equal(claims.org_id, ORG);
 });
 
 test("a member with an unrelated permission is refused", async () => {
@@ -268,6 +270,16 @@ test("an agent from another organization is refused, as a person would be", asyn
       env(),
     ),
     /organization not permitted/,
+  );
+});
+
+test("an agent holding only the retired mongodb:access scope is refused", async () => {
+  await assert.rejects(
+    verifyWorkosToken(
+      await mintToken({ ...agentClaims, scope: "mongodb:access" }),
+      env(),
+    ),
+    /missing required platform role\/permission/,
   );
 });
 
