@@ -14,7 +14,7 @@ Moved here from `nyuchi/web-services/worker` with its history.
   Squash or rebase only, linear history, no bypassing rulesets, no
   `--no-verify`. A staging merge is a patch release. Main gets a minor.
 - Checks: the org-required "Org lint" workflow runs `vite-plus / fmt, check,
-test, build` and `lint / actionlint, markdownlint, yamllint`. Locally:
+  test, build` and `lint / actionlint, markdownlint, yamllint`. Locally:
   `npm run check && npm test && npm run build`.
 - Secrets: never print, commit or pass in argv. They live in 1Password
   (`shamwari-ai/github-app`) and reach the Worker via
