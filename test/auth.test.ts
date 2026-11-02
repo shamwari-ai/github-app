@@ -83,7 +83,7 @@ const env = (over: Partial<Env> = {}): Env =>
     WORKOS_AUDIENCE: AUDIENCE,
     WORKOS_ORG_ID: ORG,
     WORKOS_REQUIRED_ROLES: "platform-team",
-    WORKOS_REQUIRED_PERMISSIONS: "mongodb:access",
+    WORKOS_REQUIRED_PERMISSIONS: "github:access",
     ...over,
   }) as Env;
 
@@ -166,11 +166,39 @@ test("the permission alone satisfies the gate", async () => {
     await mintToken({
       ...goodClaims,
       role: "member",
-      permissions: ["mongodb:access"],
+      permissions: ["github:access"],
     }),
     env(),
   );
   assert.equal(claims.org_id, ORG);
+});
+
+test("the retired mongodb:access permission no longer satisfies the gate", async () => {
+  await assert.rejects(
+    verifyWorkosToken(
+      await mintToken({
+        ...goodClaims,
+        role: "member",
+        permissions: ["mongodb:access"],
+      }),
+      env(),
+    ),
+    /missing required platform role\/permission/,
+  );
+});
+
+test("a member with an unrelated permission is refused", async () => {
+  await assert.rejects(
+    verifyWorkosToken(
+      await mintToken({
+        ...goodClaims,
+        role: "member",
+        permissions: ["widgets:sso:manage"],
+      }),
+      env(),
+    ),
+    /missing required platform role\/permission/,
+  );
 });
 
 test("an expired token is refused", async () => {
@@ -201,7 +229,7 @@ test("an unset WORKOS_JWKS_URL is refused", async () => {
 const agentClaims = {
   ...goodClaims,
   sub: "agent_reg_01ABCDEF",
-  scope: "mongodb:access",
+  scope: "github:access",
   role: undefined,
   roles: undefined,
 };
@@ -218,7 +246,7 @@ test("scope is space-separated, not an array — all of it is read", async () =>
   const claims = await verifyWorkosToken(
     await mintToken({
       ...agentClaims,
-      scope: "repo:read issues:read mongodb:access",
+      scope: "repo:read issues:read github:access",
     }),
     env(),
   );
@@ -242,6 +270,16 @@ test("an agent from another organization is refused, as a person would be", asyn
       env(),
     ),
     /organization not permitted/,
+  );
+});
+
+test("an agent holding only the retired mongodb:access scope is refused", async () => {
+  await assert.rejects(
+    verifyWorkosToken(
+      await mintToken({ ...agentClaims, scope: "mongodb:access" }),
+      env(),
+    ),
+    /missing required platform role\/permission/,
   );
 });
 
