@@ -83,7 +83,7 @@ const env = (over: Partial<Env> = {}): Env =>
     WORKOS_AUDIENCE: AUDIENCE,
     WORKOS_ORG_ID: ORG,
     WORKOS_REQUIRED_ROLES: "platform-team",
-    WORKOS_REQUIRED_PERMISSIONS: "mongodb:access",
+    WORKOS_REQUIRED_PERMISSIONS: "data:admin,mongodb:access",
     ...over,
   }) as Env;
 
@@ -171,6 +171,32 @@ test("the permission alone satisfies the gate", async () => {
     env(),
   );
   assert.equal(claims.org_id, ORG);
+});
+
+test("data:admin alone satisfies the gate", async () => {
+  const claims = await verifyWorkosToken(
+    await mintToken({
+      ...goodClaims,
+      role: "member",
+      permissions: ["data:admin"],
+    }),
+    env(),
+  );
+  assert.equal(claims.org_id, ORG);
+});
+
+test("a member with an unrelated permission is refused", async () => {
+  await assert.rejects(
+    verifyWorkosToken(
+      await mintToken({
+        ...goodClaims,
+        role: "member",
+        permissions: ["widgets:sso:manage"],
+      }),
+      env(),
+    ),
+    /missing required platform role\/permission/,
+  );
 });
 
 test("an expired token is refused", async () => {

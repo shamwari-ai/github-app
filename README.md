@@ -161,8 +161,8 @@ Africa**, so a signer who belongs to several organizations cannot accidentally
 present a token issued against the wrong one — the commonest way a valid token
 gets refused here. It is a public PKCE client, so a client id alone is enough,
 no secret, and `https://claude.ai/api/mcp/auth_callback` plus its `.com` twin
-are already registered on it. It grants `mongodb:access`, which satisfies this
-worker's permission gate; third-party app tokens surface permissions rather
+are already registered on it. It must grant `data:admin` (it still grants `mongodb:access`
+until that is changed in WorkOS), which satisfies this worker's permission gate; third-party app tokens surface permissions rather
 than the organization role, which is why that gate accepts either.
 
 `WORKOS_AUDIENCE` only carries the resource URI once that URI is registered as
@@ -190,8 +190,8 @@ stale static list — while a token for any other resource still is.
 (`github.shmwari.ai`) that took the old github.nyuchi.dev worker offline.
 
 The two authorization gates are checked against that same environment:
-`platform-team` is the slug of the **Platform Team** role, and `mongodb:access`
-is a permission it holds.
+`platform-team` is the slug of the **Platform Team** role, and `data:admin`
+(and, for now, `mongodb:access`) are permissions it holds.
 
 `GITHUB_APP_PRIVATE_KEY` takes GitHub's own download format — PKCS#1,
 `BEGIN RSA PRIVATE KEY` — as well as PKCS#8. WebCrypto only imports PKCS#8, so
