@@ -233,8 +233,8 @@ test("the advertised authorization server is parsed into an https origin", () =>
 // the reverse) misleads exactly when it matters.
 
 test("every tool carries a full set of annotations", async () => {
-  const { TOOLS } = await import("../src/mcp");
-  for (const t of TOOLS) {
+  const { listTools } = await import("./mcp-helper");
+  for (const t of await listTools()) {
     assert.ok(t.annotations, `${t.name} has no annotations`);
     for (const k of [
       "readOnlyHint",
@@ -252,8 +252,9 @@ test("every tool carries a full set of annotations", async () => {
 });
 
 test("the read tools are the ones that read, and nothing else", async () => {
-  const { TOOLS } = await import("../src/mcp");
-  const readOnly = TOOLS.filter((t) => t.annotations.readOnlyHint)
+  const { listTools } = await import("./mcp-helper");
+  const readOnly = (await listTools())
+    .filter((t) => t.annotations.readOnlyHint)
     .map((t) => t.name)
     .sort();
   assert.deepEqual(readOnly, [
@@ -267,7 +268,8 @@ test("the read tools are the ones that read, and nothing else", async () => {
 });
 
 test("no read-only tool is marked destructive, and no writer is marked read-only", async () => {
-  const { TOOLS } = await import("../src/mcp");
+  const { listTools } = await import("./mcp-helper");
+  const TOOLS = await listTools();
   for (const t of TOOLS) {
     if (t.annotations.readOnlyHint) {
       assert.equal(t.annotations.destructiveHint, false, `${t.name}`);
@@ -284,12 +286,10 @@ test("no read-only tool is marked destructive, and no writer is marked read-only
 });
 
 test("tools/list advertises the annotations, not just the schema", async () => {
-  const { handleRpc } = await import("../src/mcp");
-  const res = (await handleRpc(
-    { jsonrpc: "2.0", id: 1, method: "tools/list" } as never,
-    {} as Env,
-  )) as { result: { tools: Array<Record<string, unknown>> } };
-  assert.ok(res.result.tools.every((t) => t.annotations));
+  const { rpc } = await import("./mcp-helper");
+  const res = await rpc({ method: "tools/list" });
+  assert.ok(res.body.result.tools.length > 0);
+  assert.ok(res.body.result.tools.every((t: any) => t.annotations));
 });
 
 // --- list output shaping --------------------------------------------------
@@ -412,19 +412,14 @@ test("an argument error names the field so the caller can fix the call", async (
 });
 
 test("a bad argument reaches the caller through tools/call, not a stub", async () => {
-  const { handleRpc } = await import("../src/mcp");
-  const res = (await handleRpc(
-    {
-      jsonrpc: "2.0",
-      id: 1,
-      method: "tools/call",
-      params: {
-        name: "shamwari_get_pull_request",
-        arguments: { repo: "nyuchi/web-services", number: "twelve" },
-      },
-    } as never,
-    {} as Env,
-  )) as { result: { isError?: boolean; content: Array<{ text: string }> } };
-  assert.equal(res.result.isError, true);
-  assert.match(res.result.content[0].text, /"number"/);
+  const { rpc } = await import("./mcp-helper");
+  const res = await rpc({
+    method: "tools/call",
+    params: {
+      name: "shamwari_get_pull_request",
+      arguments: { repo: "nyuchi/web-services", number: "twelve" },
+    },
+  });
+  assert.equal(res.body.result.isError, true);
+  assert.match(res.body.result.content[0].text, /number/);
 });
