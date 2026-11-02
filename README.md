@@ -198,9 +198,9 @@ is a permission it holds.
 
 `GITHUB_APP_PRIVATE_KEY` takes GitHub's own download format — PKCS#1,
 `BEGIN RSA PRIVATE KEY` — as well as PKCS#8. WebCrypto only imports PKCS#8, so
-the worker wraps PKCS#1 in the PKCS#8 envelope itself. That means this secret
-is **byte-identical to `RELEASE_APP_PRIVATE_KEY`** with no `openssl pkcs8`
-step, which is one fewer thing to get wrong. `test/der.test.ts` checks the
+the worker wraps PKCS#1 in the PKCS#8 envelope itself. That means the file GitHub
+gives you is used as it is, with no `openssl pkcs8` step, which is one fewer
+thing to get wrong. `test/der.test.ts` checks the
 wrapper against OpenSSL's own output at 2048, 3072 and 4096 bits.
 
 All three are required. `verifyWorkosToken` refuses outright when any of

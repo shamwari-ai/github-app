@@ -3,3 +3,7 @@ node_modules/
 .dev.vars*
 .DS_Store
 *.pem
+
+# Agent-local files are development tooling: never tracked, never released.
+.claude/
+CLAUDE.md
