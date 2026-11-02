@@ -8,13 +8,13 @@ export interface Env {
   // ---- GitHub App (the only secret this worker holds) ----------------------
   // The App's private key, PEM. Accepts GitHub's own download format
   // (PKCS#1, "BEGIN RSA PRIVATE KEY") or PKCS#8 ("BEGIN PRIVATE KEY") —
-  // see toPkcs8() in github.ts. Taking PKCS#1 directly means the same secret
-  // value works here and in RELEASE_APP_PRIVATE_KEY with no conversion step,
-  // which is one fewer way to get it wrong.
+  // see toPkcs8() in github.ts. Taking PKCS#1 directly means the downloaded
+  // file works as it is, with no conversion step, which is one fewer way to
+  // get it wrong.
   GITHUB_APP_PRIVATE_KEY: string;
 
   // ---- GitHub App identity and policy (public, wrangler.toml [vars]) -------
-  GITHUB_APP_ID?: string; // numeric App ID, same value as RELEASE_APP_ID
+  GITHUB_APP_ID?: string; // numeric App ID of Shamwari for GitHub
   GITHUB_API?: string; // default https://api.github.com
 
   // Repository allowlist, comma-separated "owner/repo". EMPTY MEANS DENY ALL.
