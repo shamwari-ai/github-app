@@ -13,9 +13,9 @@ Moved here from `nyuchi/web-services/worker` with its history.
 - Branches: feature PRs target `staging`. `staging` to `main` is a release.
   Squash or rebase only, linear history, no bypassing rulesets, no
   `--no-verify`. A staging merge is a patch release. Main gets a minor.
-- Checks: the org-required "Org lint" workflow runs `vite-plus / fmt, check,
-  test, build` and `lint / actionlint, markdownlint, yamllint`. Locally:
-  `npm run check && npm test && npm run build`.
+- Checks: the org-required "Org lint" workflow runs the `vite-plus` jobs (fmt,
+  check, test, build) and the `lint` jobs (actionlint, markdownlint,
+  yamllint). Locally: `npm run check && npm test && npm run build`.
 - Secrets: never print, commit or pass in argv. They live in 1Password
   (`shamwari-ai/github-app`) and reach the Worker via
   `scripts/github-app-convert.sh secrets`. `wrangler deploy` replaces
