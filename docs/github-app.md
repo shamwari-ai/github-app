@@ -112,8 +112,8 @@ them (this section was written from the docs, not from a live install):
   organisation, not just the enterprise one.
 
 The Worker needs no code change for this: it already mints a token per
-repository installation. The one change that does need code is switching
-`GITHUB_APP_ID` to the new App (step 4 above).
+repository installation. `GITHUB_APP_ID` in `wrangler.toml` is the new App's
+id (5579098), so the key set as `GITHUB_APP_PRIVATE_KEY` must be that App's.
 
 ## Rotating
 
