@@ -1,0 +1,22 @@
+# Version updates open against staging (main takes releases only) and wait a
+# few days after a release. Security updates are not held back by the
+# cooldown. Ignore entries need an expiry and an issue number.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    target-branch: staging
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 7
+    groups:
+      all:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: staging
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7

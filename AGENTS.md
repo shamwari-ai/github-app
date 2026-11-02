@@ -13,9 +13,9 @@ Moved here from `nyuchi/web-services/worker` with its history.
 - Branches: feature PRs target `staging`. `staging` to `main` is a release.
   Squash or rebase only, linear history, no bypassing rulesets, no
   `--no-verify`. A staging merge is a patch release. Main gets a minor.
-- Checks: the org-required "Org lint" workflow runs `vite-plus / fmt, check,
-test, build` and `lint / actionlint, markdownlint, yamllint`. Locally:
-  `npm run check && npm test && npm run build`.
+- Checks: the org-required "Org lint" workflow runs the `vite-plus` jobs (fmt,
+  check, test, build) and the `lint` jobs (actionlint, markdownlint,
+  yamllint). Locally: `npm run check && npm test && npm run build`.
 - Secrets: never print, commit or pass in argv. They live in 1Password
   (`shamwari-ai/github-app`) and reach the Worker via
   `scripts/github-app-convert.sh secrets`. `wrangler deploy` replaces
@@ -31,6 +31,23 @@ test, build` and `lint / actionlint, markdownlint, yamllint`. Locally:
 - Names: Shamwari is the consumer AI and Nyuchi AI is internal. Never use
   "Ubuntu AI". British spelling: licence (noun), license (verb).
 - Security reports: see SECURITY.md (<security@nyuchi.com>).
+
+## Dev skills and progress reports
+
+Load the Mzizi **dev skills** before starting work:
+`mzizi_get_skills category=dev` on the Mzizi MCP (`mcp.mzizi.dev`), or
+`@nyuchi/mzizi-skills` from npm. They are `digital-hygiene` and
+`progress-report`.
+
+- **Digital hygiene.** Check free disk before starting, clone only under
+  `$TMPDIR`, share build caches, and audit, then delete, your clones once the
+  work merges (`digital-hygiene` skill).
+- **Clone isolation.** Clone only into a directory unique to you; never touch
+  another agent's.
+- **Progress reports.** All dev work runs on a 10-minute progress-report loop
+  (`progress-report` skill): measured bars, what changed, and a final "Needs
+  you:" line. Report ticks never publish, release, merge or deploy without the
+  owner's approval.
 
 ## Layout
 
