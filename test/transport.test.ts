@@ -90,7 +90,7 @@ const env = (): Env =>
     WORKOS_AUDIENCE: AUDIENCE,
     WORKOS_ORG_ID: ORG,
     WORKOS_REQUIRED_ROLES: "platform-team",
-    WORKOS_REQUIRED_PERMISSIONS: "data:admin,mongodb:access",
+    WORKOS_REQUIRED_PERMISSIONS: "github:access,mongodb:access",
     MCP_RESOURCE_URL: AUDIENCE,
     GITHUB_ALLOWED_REPOS: "nyuchi/web-services",
   }) as Env;

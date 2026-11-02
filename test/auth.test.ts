@@ -83,7 +83,7 @@ const env = (over: Partial<Env> = {}): Env =>
     WORKOS_AUDIENCE: AUDIENCE,
     WORKOS_ORG_ID: ORG,
     WORKOS_REQUIRED_ROLES: "platform-team",
-    WORKOS_REQUIRED_PERMISSIONS: "data:admin,mongodb:access",
+    WORKOS_REQUIRED_PERMISSIONS: "github:access,mongodb:access",
     ...over,
   }) as Env;
 
@@ -173,12 +173,12 @@ test("the permission alone satisfies the gate", async () => {
   assert.equal(claims.org_id, ORG);
 });
 
-test("data:admin alone satisfies the gate", async () => {
+test("github:access alone satisfies the gate", async () => {
   const claims = await verifyWorkosToken(
     await mintToken({
       ...goodClaims,
       role: "member",
-      permissions: ["data:admin"],
+      permissions: ["github:access"],
     }),
     env(),
   );

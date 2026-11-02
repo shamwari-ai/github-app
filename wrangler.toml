@@ -73,11 +73,11 @@ MCP_RESOURCE_HOSTS = "github.shamwari.ai,github.nyuchi.dev"
 WORKOS_ORG_ID = "org_01KRDAB894DJF5V38PT5617TV1"
 # Platform gate: the caller must hold the Platform Team role OR one of these
 # permissions (third-party app and agent tokens surface permissions or scope
-# rather than the role). data:admin is the intended permission. mongodb:access
+# rather than the role). github:access is the intended permission. mongodb:access
 # stays listed only until the WorkOS Connect app that Claude signs in with
-# grants data:admin too; then remove it (see shamwari-ai/github-app#18).
+# grants github:access too; then remove it (see shamwari-ai/github-app#18).
 WORKOS_REQUIRED_ROLES = "platform-team"
-WORKOS_REQUIRED_PERMISSIONS = "data:admin,mongodb:access"
+WORKOS_REQUIRED_PERMISSIONS = "github:access,mongodb:access"
 
 # The reviewing model, as a Workers AI model id. A var, not a constant in
 # code, so the model can be changed — and two models compared on the same
