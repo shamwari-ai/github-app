@@ -32,7 +32,7 @@ Moved here from `nyuchi/web-services/worker` with its history.
   "Ubuntu AI". British spelling: licence (noun), license (verb).
 - Security reports: see SECURITY.md (<security@nyuchi.com>).
 
-## Dev skills, progress reports and the merge gate
+## Dev skills and progress reports
 
 Load the Mzizi **dev skills** before starting work:
 `mzizi_get_skills category=dev` on the Mzizi MCP (`mcp.mzizi.dev`), or
@@ -48,8 +48,6 @@ Load the Mzizi **dev skills** before starting work:
   (`progress-report` skill): measured bars, what changed, and a final "Needs
   you:" line. Report ticks never publish, release, merge or deploy without the
   owner's approval.
-- **Merge gate.** Merge only when the work is complete, CI is green, it's
-  verified at runtime, and `/code-review` has run with findings resolved.
 
 ## Layout
 
