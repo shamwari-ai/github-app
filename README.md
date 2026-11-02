@@ -161,9 +161,12 @@ Africa**, so a signer who belongs to several organizations cannot accidentally
 present a token issued against the wrong one — the commonest way a valid token
 gets refused here. It is a public PKCE client, so a client id alone is enough,
 no secret, and `https://claude.ai/api/mcp/auth_callback` plus its `.com` twin
-are already registered on it. It grants `mongodb:access`, which satisfies this
+are already registered on it. It grants `github:access`, which satisfies this
 worker's permission gate; third-party app tokens surface permissions rather
-than the organization role, which is why that gate accepts either.
+than the organization role, which is why that gate accepts either. The
+permission is defined in WorkOS (Mukoko Account, production), held by the
+`platform-team` role and granted to this app. Check it there before changing
+the gate: the Worker cannot see WorkOS configuration.
 
 `WORKOS_AUDIENCE` only carries the resource URI once that URI is registered as
 an **AuthKit OAuth resource** in the WorkOS environment
@@ -190,7 +193,7 @@ stale static list — while a token for any other resource still is.
 (`github.shmwari.ai`) that took the old github.nyuchi.dev worker offline.
 
 The two authorization gates are checked against that same environment:
-`platform-team` is the slug of the **Platform Team** role, and `mongodb:access`
+`platform-team` is the slug of the **Platform Team** role, and `github:access`
 is a permission it holds.
 
 `GITHUB_APP_PRIVATE_KEY` takes GitHub's own download format — PKCS#1,
