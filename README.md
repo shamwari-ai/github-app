@@ -46,14 +46,17 @@ leaving the ritual. Every finding a review needs to carry fits in a comment.
 **It does not merge, and could not.** Merging needs `contents: write`; the
 token asks for `contents: read`.
 
-**It does not touch workflows.** The App holds `workflows: read/write`; the
-token does not request it. So this worker cannot modify a `.github/workflows/`
-file or cut a release, even though the credential it authenticates with can.
+**It does not touch workflows.** The App has no `workflows` permission at
+all, so neither the App nor a token minted from it can modify a
+`.github/workflows/` file.
 
 ## How the permissions actually work
 
-This worker authenticates as the **same GitHub App that mints release tokens**.
-That was a deliberate decision, and the blast radius is managed with two
+This worker authenticates as **Shamwari for GitHub**, a review app that
+holds no release permissions. Releases run as a separate app, **bundu-release**
+(owned by the bundu-labs enterprise, driven by nyuchi/.github's
+`auto-release.yml`), so a bug in this review bot can never push code or cut a
+release. Within the review app, the blast radius is still managed with two
 independent bounds rather than by trusting the App's scope:
 
 **Outer bound — `GITHUB_ALLOWED_REPOS`.** A comma-separated `owner/repo` list,
@@ -69,11 +72,11 @@ holds and never a superset, which is what turns a release-capable App into a
 review-capable agent.
 
 ```
-App holds:     contents:write  pull_requests:write  workflows:write
+App holds:     contents:read   pull_requests:write  issues:write  checks:read  metadata:read
 Token asks:    contents:read   pull_requests:write  issues:write  metadata:read
-                    ^ read            ^ same              ^ new        ^
-               cannot push      can review        needs App change
-               cannot merge                       (see below)
+                    ^ same            ^ same              ^ same        ^ same
+               cannot push      can review          can triage
+               cannot merge
 ```
 
 > **A missing permission breaks everything, not just the tool that needs it.**
