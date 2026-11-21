@@ -6,12 +6,19 @@
 #   scripts/github-app-convert.sh <code>     exchange the manifest code (within 1 hour)
 #   scripts/github-app-convert.sh secrets    pipe the Worker secrets from 1Password to wrangler
 #
-# Needs: gh (signed in as a shamwari-ai owner), op (signed in), jq, npx.
-# Vault: $OP_VAULT, default "Bundu Infrastructure". Item: "shamwari-ai/github-app".
+# Needs: gh (signed in as an owner of the enterprise that owns the App), op
+# (signed in), jq, npx. The App is owned by the bundu-labs ENTERPRISE; see
+# docs/enterprise-app-setup.md for the whole procedure, including registering
+# the App by hand and storing its credentials in the item below yourself.
+#
+# Vault: $OP_VAULT, default "Bundu Infrastructure".
+# Item:  $OP_ITEM,  default "bundu-labs/shamwari-for-github" (fields
+#        GITHUB_APP_ID, GITHUB_APP_SLUG, GITHUB_WEBHOOK_SECRET,
+#        GITHUB_APP_PRIVATE_KEY, and from the manifest flow the client id/secret).
 set -euo pipefail
 
 VAULT="${OP_VAULT:-Bundu Infrastructure}"
-ITEM="shamwari-ai/github-app"
+ITEM="${OP_ITEM:-bundu-labs/shamwari-for-github}"
 WORKER="shamwari-github-mcp"
 
 need() { command -v "$1" >/dev/null || { echo "missing: $1" >&2; exit 1; }; }
@@ -20,7 +27,7 @@ field() { op read "op://$VAULT/$ITEM/$1"; }
 
 case "${1:-}" in
   "" | -h | --help)
-    sed -n '2,11p' "$0"
+    sed -n '2,17p' "$0"
     ;;
   secrets)
     need op; need npx
@@ -30,7 +37,7 @@ case "${1:-}" in
       field "$name" | npx wrangler secret put "$name" --name "$WORKER" >/dev/null
       echo "set $name on $WORKER"
     done
-    echo "GITHUB_APP_ID is public: put $(field GITHUB_APP_ID) in wrangler.toml by pull request."
+    echo "GITHUB_APP_ID is public: put $(field GITHUB_APP_ID) in wrangler.toml by pull request (docs/enterprise-app-setup.md, step 5)."
     ;;
   *)
     need gh; need op; need jq
@@ -57,7 +64,7 @@ case "${1:-}" in
       }' |
       op item create --vault "$VAULT" >/dev/null
     echo "saved to 1Password: $VAULT / $ITEM"
-    echo "App: https://github.com/organizations/shamwari-ai/settings/apps/$(field GITHUB_APP_SLUG)"
+    echo "App: https://github.com/enterprises/bundu-labs/settings/apps/$(field GITHUB_APP_SLUG)"
     echo "next: scripts/github-app-convert.sh secrets"
     ;;
 esac

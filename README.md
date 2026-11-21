@@ -1,11 +1,12 @@
 # Shamwari for GitHub
 
-> A Cloudflare Worker that reviews pull requests and exposes GitHub review,
-> pull request and issue operations as an MCP server.
+> A Cloudflare Worker, written in Rust, that reviews pull requests and exposes
+> GitHub review, pull request and issue operations as an MCP server.
 
 Served at **`https://github.shamwari.ai`** (MCP endpoint
 `https://github.shamwari.ai/mcp`). The GitHub App is **Shamwari for GitHub**,
-owned by the shamwari-ai organisation (see [docs/github-app.md](docs/github-app.md)).
+owned by the bundu-labs enterprise (see [docs/github-app.md](docs/github-app.md)
+and the move runbook, [docs/enterprise-app-setup.md](docs/enterprise-app-setup.md)).
 Comment `@shamwari` on a pull request to summon a review.
 
 This repository was split out of `nyuchi/web-services` (`worker/`) with its
@@ -106,13 +107,25 @@ error rather than a skipped check.
 
 ## Setup
 
+The Worker is Rust ([`workers-rs`](https://github.com/cloudflare/workers-rs)),
+compiled to `wasm32-unknown-unknown` and bundled by `worker-build`. The
+toolchain is pinned in `rust-toolchain.toml` (stable, with the wasm target).
+
 ```bash
-cd worker
-npm install
-npm run build     # tsc --noEmit
-npm test          # DER wrapper + policy guards
-npm run dev       # wrangler dev
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test                     # 210 tests, host target, no network
+wrangler dev                   # builds with worker-build via wrangler.toml [build]
+scripts/smoke-local.sh         # the built wasm on workerd, throwaway keys
 ```
+
+`wrangler dev` and `wrangler deploy` run the `[build]` command in
+`wrangler.toml` (`cargo install worker-build`, pinned, then `worker-build
+--release`) and deploy `build/worker/shim.mjs`. Use a current wrangler 4.x:
+`workers-rs` calls the `cloudflare:workers` tracing export, which older local
+runtimes lack. How the Rust port maps onto the TypeScript it replaced, test by
+test, is in [docs/rust-port.md](docs/rust-port.md); what the Worker does is in
+[docs/behaviour-contract.md](docs/behaviour-contract.md).
 
 `GITHUB_APP_ID` is committed in `wrangler.toml` — an App ID is an identifier,
 not a credential, and `wrangler deploy` replaces the deployed `[vars]` block,
@@ -189,7 +202,7 @@ Host gets the canonical `MCP_RESOURCE_URL`, never a reflection. The served
 resource URI is also always an accepted `aud`, on top of `WORKOS_AUDIENCE`, so
 a token minted for the resource a client discovered is never refused for a
 stale static list — while a token for any other resource still is.
-`test/resource.test.ts` pins both, including the 2026-10-06 typo
+`src/tests/resource.rs` pins both, including the 2026-10-06 typo
 (`github.shmwari.ai`) that took the old github.nyuchi.dev worker offline.
 
 The two authorization gates are checked against that same environment:
@@ -197,18 +210,18 @@ The two authorization gates are checked against that same environment:
 is a permission it holds.
 
 `GITHUB_APP_PRIVATE_KEY` takes GitHub's own download format — PKCS#1,
-`BEGIN RSA PRIVATE KEY` — as well as PKCS#8. WebCrypto only imports PKCS#8, so
-the worker wraps PKCS#1 in the PKCS#8 envelope itself. That means the file GitHub
-gives you is used as it is, with no `openssl pkcs8` step, which is one fewer
-thing to get wrong. `test/der.test.ts` checks the
-wrapper against OpenSSL's own output at 2048, 3072 and 4096 bits.
+`BEGIN RSA PRIVATE KEY` — as well as PKCS#8. The signing code only imports
+PKCS#8, so the worker wraps PKCS#1 in the PKCS#8 envelope itself. That means the
+file GitHub gives you is used as it is, with no `openssl pkcs8` step, which is
+one fewer thing to get wrong. `src/tests/der.rs` checks the wrapper against the
+`rsa` crate's own PKCS#8 output at 2048, 3072 and 4096 bits.
 
-All three are required. `verifyWorkosToken` refuses outright when any of
+All three are required. `verify_workos_token` refuses outright when any of
 `WORKOS_JWKS_URL` or `WORKOS_ISSUER` is unset, or when there is no audience at
 all (no `WORKOS_AUDIENCE` and no served resource), rather than
 treating a missing value as "skip that check" — an unset audience would
 otherwise let a token minted for any other MCP resource in the same WorkOS
-environment be spent here. `test/auth.test.ts` pins that.
+environment be spent here. `src/tests/auth.rs` pins that.
 
 ## Agents, not just people
 
@@ -248,26 +261,30 @@ Accepting `scope` widens the gate for agents only. A person with neither role
 nor permission is still refused, and there is a test that fails if that stops
 being true.
 
-## Protocol: the MCP SDK
+## Protocol: MCP, hand-written
 
-MCP is served by the official TypeScript SDK (`@modelcontextprotocol/server`,
-v2) through `createMcpHandler`, which answers both protocol eras on one
-endpoint from one factory, statelessly, per request. This repository does not
-implement the protocol itself.
+MCP is served by `src/mcp.rs`, a stateless Streamable HTTP / JSON-RPC 2.0 layer
+that answers both protocol eras on one endpoint from one tool table, per
+request. It replaces the TypeScript SDK this Worker used before the Rust port;
+there is no Rust MCP crate for Workers wasm that does both eras, and the surface
+this server needs (`initialize`, `server/discover`, `tools/list`, `tools/call`,
+`ping`) is small. The SDK's classifier was the reference for era detection and
+status codes. See [docs/rust-port.md](docs/rust-port.md) for what is not
+reproduced.
 
 | Revision     | Era    | How a client selects it                                                  |
 | ------------ | ------ | ------------------------------------------------------------------------ |
 | `2026-07-28` | modern | every request carries `_meta["io.modelcontextprotocol/protocolVersion"]` |
 | `2025-06-18` | legacy | an `initialize` handshake                                                |
 
-The SDK decides the era, validates the mirrored headers and the `_meta`
-envelope, and picks the status codes (an unknown modern method is 404, a header
-mismatch or unsupported version is 400). `GET` and `DELETE` on the endpoint are 405. Clients must send `Accept: application/json, text/event-stream`.
+The era is decided from the body; the mirrored headers and the `_meta`
+envelope are validated, and the status codes follow (an unknown modern method is 404, a header
+mismatch or unsupported version is 400). `GET` and `DELETE` on the endpoint are
+405. Replies are `application/json`.
 
-What stays in this Worker, in front of the SDK: the `Origin` check (403 when it
-is present and not this resource's), WorkOS token verification (the verified
-token is passed to the SDK as `authInfo`), the OAuth resource metadata, A2A and
-the webhook.
+What happens in front of it, in `src/router.rs`: the `Origin` check (403 when
+it is present and not this resource's) and WorkOS token verification, then the
+OAuth resource metadata, A2A and the webhook.
 
 `server/discover` is implemented (the modern spec requires it) and returns the
 supported versions, capabilities and server identity in one call.
@@ -530,17 +547,22 @@ GET|DELETE /mcp                              405 (sessions and GET streams are g
 ## Layout
 
 ```
-src/env.ts      bindings and the csv helper
-src/origin.ts   the Origin check (the protocol itself is the MCP SDK's)
-src/auth.ts     WorkOS token verification (shared logic with nyuchi-fly-mcp)
-src/github.ts   App JWT, scoped installation tokens, REST operations
-src/review.ts   the review engine: diff annotation, the model call, anchoring
-src/webhook.ts  GitHub webhook ingest, signature check, the draft rule
-src/mcp.ts      tool definitions and JSON-RPC dispatch
-src/index.ts    routing, CORS, auth enforcement
+src/lib.rs            module list
+src/worker_entry.rs   the Workers entry point (wasm32 only): the one runtime touchpoint
+src/platform.rs       the Platform trait: HTTP, Workers AI, clock, tracing span
+src/config.rs         bindings: [vars] and secrets
+src/router.rs         routing, CORS, Origin, auth enforcement
+src/auth.rs           WorkOS token verification (shared logic with nyuchi-fly-mcp)
+src/github.rs         App JWT, scoped installation tokens, REST operations
+src/review.rs         the review engine: diff annotation, the model call, anchoring
+src/webhook.rs        GitHub webhook ingest, signature check, the draft rule
+src/mcp.rs            tool definitions and JSON-RPC dispatch
+src/a2a.rs            the A2A surface
+src/setup.rs          the App setup pages
+src/tests/            the test suite and its fixtures
 ```
 
-`src/github.ts` exposes each operation as a plain function. The MCP layer is a
+`src/github.rs` exposes each operation as a plain function. The MCP layer is a
 thin wrapper over them, so the webhook-driven autonomous layer calls the same
 code rather than reimplementing it.
 
@@ -550,7 +572,7 @@ code rather than reimplementing it.
 Nothing here acts on its own.
 
 **Milestone 2 — autonomous agent**, partly built. The _brain_ exists:
-`src/review.ts` reviews a pull request on demand through
+`src/review.rs` reviews a pull request on demand through
 `shamwari_review_pull_request`, and Workers AI removed the third-party API key
 that milestone was going to need.
 
@@ -560,4 +582,4 @@ per-repository rate limiting, dedup on head SHA, and loop guards so the agent
 does not review its own output. Deliberately sequenced this way — the review
 engine carries all the risk (is the output worth reading?) and none of it
 needs a webhook to answer, and the autonomous layer is then a caller of
-`reviewPullRequest()` rather than a second implementation of it.
+`review_pull_request()` rather than a second implementation of it.
