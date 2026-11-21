@@ -1,0 +1,45 @@
+[package]
+name = "shamwari-github-mcp"
+version = "0.1.0"
+edition = "2021"
+description = "Shamwari for GitHub: GitHub App and MCP server on Cloudflare Workers (github.shamwari.ai)"
+repository = "https://github.com/shamwari-ai/github-app"
+license = "UNLICENSED"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+base64 = "0.23.1"
+futures-util = { version = "0.3.34", default-features = false, features = ["alloc"] }
+getrandom = "0.4.3"
+hmac = "0.13.0"
+regex = { version = "1.13.2", default-features = false, features = ["std", "perf"] }
+rsa = { version = "0.10.0", features = ["pkcs1v15"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.154", features = ["preserve_order"] }
+sha2 = "0.11.1"
+url = "2.5.9"
+
+[dev-dependencies]
+futures = "0.3.34"
+getrandom = { version = "0.4.3", features = ["sys_rng"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.4.3", features = ["wasm_js"] }
+js-sys = "0.3.107"
+wasm-bindgen = "0.2.130"
+worker = "0.9.0"
+
+# Release builds are what ships: size matters (the Worker upload limit) and
+# panics are never recovered, so abort rather than carry unwinding tables.
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+
+# Test key generation (RSA) is unusably slow unoptimised.
+[profile.dev.package."*"]
+opt-level = 3

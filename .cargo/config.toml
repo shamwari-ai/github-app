@@ -1,0 +1,4 @@
+# getrandom 0.3+ has no implicit browser/Workers backend: it must be selected
+# at compile time. Without this, the wasm32 build fails to link.
+[target.wasm32-unknown-unknown]
+rustflags = ["--cfg", "getrandom_backend=\"wasm_js\""]
