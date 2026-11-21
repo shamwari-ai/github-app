@@ -12,8 +12,6 @@ pub struct Config {
     /// The App's numeric id (public, `[vars]`).
     pub github_app_id: Option<String>,
     pub github_api: Option<String>,
-    /// Outer bound: comma-separated `owner/repo`. Empty means deny all.
-    pub github_allowed_repos: Option<String>,
     /// Inner bound: `name:level` pairs requested when minting a token.
     pub github_token_permissions: Option<String>,
     /// SECRET. GitHub's webhook secret. Unset means /webhook answers 503.

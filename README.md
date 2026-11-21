@@ -39,7 +39,7 @@ config with a different URL.
 
 **It does not approve pull requests.** `shamwari_create_review` accepts
 `COMMENT` and `REQUEST_CHANGES` and refuses `APPROVE` in any casing, before
-the repository allowlist is even consulted. An agent that can approve can
+any repository is touched. An agent that can approve can
 satisfy a branch protection review requirement by itself, letting code reach a
 protected branch with nobody having read it — that removes the person while
 leaving the ritual. Every finding a review needs to carry fits in a comment.
@@ -53,14 +53,14 @@ file or cut a release, even though the credential it authenticates with can.
 
 ## How the permissions actually work
 
-This worker authenticates as the **same GitHub App that mints release tokens**.
+This worker authenticates as a GitHub App that holds far more than it needs.
 That was a deliberate decision, and the blast radius is managed with two
 independent bounds rather than by trusting the App's scope:
 
-**Outer bound — `GITHUB_ALLOWED_REPOS`.** A comma-separated `owner/repo` list,
-checked before a token is minted, so a repository outside it never reaches
-GitHub at all. **Empty or unset denies everything**: a misconfigured worker
-should be useless, not open. There is a test for exactly that.
+**Outer bound — what each installation grants.** The App is public and anyone
+may install it; GitHub's own repository selection, chosen by whoever installs
+it, decides which repositories this worker can touch at all. There is no
+worker-side repository list.
 
 **Inner bound — `GITHUB_TOKEN_PERMISSIONS`.** Every call runs on an
 installation token minted per-repository via
@@ -355,7 +355,7 @@ tool run two models over one pull request without either of them writing to
 it.
 
 When it does post, it posts through `createReview()` — which refuses `APPROVE`
-before the allowlist is consulted. The agent inherits that guarantee rather
+before any repository is touched. The agent inherits that guarantee rather
 than restating it. It also defaults to `COMMENT` even when findings are
 blocking: `REQUEST_CHANGES` leaves a mark a person has to dismiss, so it is
 something this reviewer should earn on evidence, not assume on its first day.

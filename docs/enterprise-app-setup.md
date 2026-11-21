@@ -127,18 +127,16 @@ If it refuses the enterprise URL, use Option B.
 
 ## 3. Install it on the organisations
 
-For each organisation the App serves (`nyuchi`, `shamwari-ai`, `mukoko-dev`;
-the ones whose repositories are in `GITHUB_ALLOWED_REPOS`):
+The App is public — any organisation may install it:
 
 1. Open `https://github.com/apps/<slug>/installations/new` (or the App's
    settings page, **Install App**).
-2. Choose the organisation, then **Only select repositories**, and tick exactly
-   the repositories listed for that organisation in `GITHUB_ALLOWED_REPOS` in
-   `wrangler.toml`. Install.
+2. Choose the organisation, then **Only select repositories**, and tick the
+   repositories it should serve. Install.
 
 Installing on the _enterprise_ itself is not needed: the App has no enterprise
-permissions. If you later add a repository, add it here **and** to
-`GITHUB_ALLOWED_REPOS` by pull request; the allowlist is the outer bound.
+permissions. GitHub's own repository selection is the outer bound; adding a
+repository later is an installation-settings change, not a pull request.
 
 ## 4. Put the credentials on the Worker
 
@@ -188,17 +186,17 @@ checkout of `main`.
    }
    ```
 
-   A healthy result has `"ready": true`, the new App's `slug` and `name`, and for
-   **every** allowlisted repository `"installed": true` and `"missing": []`. If
-   `ready` is false the `note` and the per-repository `error` say which
-   repository lacks an installation or which permission the installation has not
-   accepted (an organisation owner must accept a pending permission request).
+   A healthy result has `"ready": true`, the App's `slug` and `name`, and for
+   **every** installation `"missing": []`. If
+   `ready` is false the `note` says which
+   installation is pending an acceptance of the App's permissions (an
+   organisation owner must accept a pending permission request).
 
 3. In the App's settings, **Advanced**, **Recent Deliveries**: the `ping`
    from creation (or **Redeliver**) shows `200` and
    `{"ok":true,"skipped":"ping"}`. A `401` is a webhook-secret mismatch; a
    `503` means `GITHUB_WEBHOOK_SECRET` is not set on the Worker.
-4. On a pull request in an allowlisted repository, comment `@shamwari` (as an
+4. On a pull request in a repository an installation grants, comment `@shamwari` (as an
    owner, member or collaborator). A comment from the App headed "Automated
    review" appears on the head commit within about a minute.
 

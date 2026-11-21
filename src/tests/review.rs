@@ -455,7 +455,6 @@ fn engine_cfg() -> Config {
     Config {
         github_app_id: Some("5579098".into()),
         github_app_private_key: Some(pem("PRIVATE KEY", &pkcs8_der(test_key()))),
-        github_allowed_repos: Some("nyuchi/web-services".into()),
         review_enabled: Some("true".into()),
         ai_gateway_id: Some("fundi".into()),
         ..Default::default()

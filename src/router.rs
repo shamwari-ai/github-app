@@ -21,7 +21,7 @@ use crate::config::Config;
 use crate::mcp::{handle_mcp, PARSE_ERROR};
 use crate::origin::origin_allowed;
 use crate::platform::Platform;
-use crate::setup::{app_created, app_installed, app_new, HtmlResponse};
+use crate::setup::{app_created, app_new, HtmlResponse};
 use crate::webhook::{handle_webhook, Decision};
 use serde_json::{json, Value};
 use url::Url;
@@ -231,7 +231,6 @@ pub async fn handle<P: Platform>(p: &P, cfg: &Config, req: Req) -> Outcome {
                 return done(html(app_created(code.as_deref())));
             }
             "/github-app/new" => return done(html(app_new())),
-            "/github-app/installed" => return done(html(app_installed())),
             _ => {}
         }
     }

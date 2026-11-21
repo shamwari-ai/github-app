@@ -388,17 +388,10 @@ pub fn handle_webhook(
         Decision::Mention { repo, number, .. } => (repo.clone(), *number, "mention"),
     };
 
-    // The same allowlist every tool call passes. Checked here as well as in
-    // github.rs so a repository outside it costs nothing rather than failing
-    // after a token mint. (Exact, case-sensitive match, as before.)
-    let allowed = split_csv(cfg.github_allowed_repos.as_deref());
-    if !allowed.contains(&repo) {
-        return out(
-            200,
-            json!({ "ok": true, "skipped": "repository not allowlisted" }),
-        );
-    }
-
+    // No worker-side repository list: the outer bound is what each
+    // installation grants (GitHub's own repository selection, chosen by
+    // whoever installs the App), so a delivery from any installed repository
+    // is queued; the token mint narrows it further, per repository.
     WebhookOutcome {
         status: 202,
         body: json!({ "ok": true, "queued": kind, "repo": repo, "pull_request": number }),

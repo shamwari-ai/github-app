@@ -269,7 +269,6 @@ fn an_unset_secret_never_verifies_whatever_is_presented() {
 fn hook_cfg() -> Config {
     Config {
         github_webhook_secret: Some(SECRET.into()),
-        github_allowed_repos: Some("nyuchi/web-services".into()),
         ..Default::default()
     }
 }
@@ -333,8 +332,10 @@ fn a_signed_pull_request_delivery_is_queued_with_202() {
 }
 
 #[test]
-fn a_repository_outside_the_allowlist_is_skipped_before_anything_is_spent() {
-    let body = pr_with(json!({ "repository": { "full_name": "evil/repo" } })).to_string();
+fn a_repository_from_any_installation_is_queued() {
+    // No worker-side repository list: whoever installs the App chose the
+    // repositories, so a delivery from any installed repository is queued.
+    let body = pr_with(json!({ "repository": { "full_name": "other/repo" } })).to_string();
     let o = handle_webhook(
         &hook_cfg(),
         "POST",
@@ -342,9 +343,10 @@ fn a_repository_outside_the_allowlist_is_skipped_before_anything_is_spent() {
         Some(&sign(SECRET, &body)),
         Some("pull_request"),
     );
-    assert_eq!(o.status, 200);
-    assert_eq!(o.body["skipped"], "repository not allowlisted");
-    assert!(o.job.is_none());
+    assert_eq!(o.status, 202);
+    assert_eq!(o.body["queued"], "push");
+    assert_eq!(o.body["repo"], "other/repo");
+    assert!(matches!(o.job, Some(Decision::Push { .. })));
 }
 
 #[test]

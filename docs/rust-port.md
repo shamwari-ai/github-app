@@ -101,10 +101,8 @@ a loop (`der`, `resource`) are one Rust test looping the same cases.
 | `test/der.test.ts`       | derLength uses short form below 128 and long form at or above it              | `der::der_length_uses_short_form_below_128_and_long_form_at_or_above_it`                  |
 | `test/origin.test.ts`    | Origin validation allows the resource's own origin and refuses others         | `origin::origin_validation_allows_the_resources_own_origin_and_refuses_others`            |
 | `test/origin.test.ts`    | an absent Origin is allowed                                                   | `origin::an_absent_origin_is_allowed`                                                     |
-| `test/policy.test.ts`    | an allowlisted repo resolves to owner and name                                | `policy::an_allowlisted_repo_resolves_to_owner_and_name`                                  |
-| `test/policy.test.ts`    | the allowlist is case-insensitive                                             | `policy::the_allowlist_is_case_insensitive`                                               |
-| `test/policy.test.ts`    | a repo outside the allowlist is refused                                       | `policy::a_repo_outside_the_allowlist_is_refused`                                         |
-| `test/policy.test.ts`    | an unset allowlist denies everything rather than allowing everything          | `policy::an_unset_allowlist_denies_everything_rather_than_allowing_everything`            |
+| `test/policy.test.ts`    | a repo slug resolves to owner and name                                        | `policy::a_repo_slug_resolves_to_owner_and_name`                                          |
+| `test/policy.test.ts`    | the original casing is preserved                                              | `policy::the_original_casing_is_preserved`                                                |
 | `test/policy.test.ts`    | a malformed slug is rejected before any call is made                          | `policy::a_malformed_slug_is_rejected_before_any_call_is_made`                            |
 | `test/policy.test.ts`    | APPROVE is refused, in any casing                                             | `policy::approve_is_refused_in_any_casing`                                                |
 | `test/policy.test.ts`    | an unrecognised review event is refused                                       | `policy::an_unrecognised_review_event_is_refused`                                         |
@@ -222,7 +220,7 @@ handler against a stand-in GitHub).
 | `auth::a_tampered_payload_fails_signature_verification`                                      |
 | `auth::a_non_rs256_token_and_a_malformed_token_are_refused`                                  |
 | `auth::the_jwks_is_cached_between_verifications`                                             |
-| `policy::approve_is_refused_even_for_a_repo_that_is_not_allowlisted`                         |
+| `policy::an_unrecognised_review_event_is_refused`                                            |
 | `policy::there_is_no_approve_tool_and_no_merge_tool`                                         |
 | `policy::the_tool_names_are_exactly_the_ones_the_typescript_server_exposed`                  |
 | `review::the_annotated_text_is_exactly_what_the_model_is_shown`                              |
@@ -256,7 +254,7 @@ handler against a stand-in GitHub).
 | `transport::health_the_agent_card_and_unknown_paths`                                         |
 | `transport::a_missing_required_argument_names_the_field`                                     |
 | `transport::an_unknown_tool_is_an_invalid_params_error`                                      |
-| `transport::a_repo_outside_the_allowlist_is_refused_through_tools_call_before_any_request`   |
+| `transport::a_malformed_repo_slug_is_refused_through_tools_call_before_any_request`          |
 | `transport::defaults_are_applied_and_the_list_query_is_what_github_expects`                  |
 | `transport::an_update_with_nothing_to_change_is_an_argument_error`                           |
 | `transport::a_create_review_with_approve_is_rejected_by_the_schema_before_it_reaches_github` |
@@ -266,7 +264,7 @@ handler against a stand-in GitHub).
 | `webhook::an_unsigned_or_badly_signed_delivery_is_401_and_runs_nothing`                      |
 | `webhook::a_signed_non_json_body_is_400_and_get_is_405`                                      |
 | `webhook::a_signed_pull_request_delivery_is_queued_with_202`                                 |
-| `webhook::a_repository_outside_the_allowlist_is_skipped_before_anything_is_spent`            |
+| `webhook::a_repository_from_any_installation_is_queued`                                      |
 | `webhook::a_draft_delivery_is_acknowledged_but_not_queued`                                   |
 | `webhook::the_trigger_associations_are_configurable`                                         |
 | `webhook::a_mention_on_a_closed_pull_request_is_skipped`                                     |

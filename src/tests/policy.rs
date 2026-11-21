@@ -10,54 +10,25 @@ use crate::github::{
 use crate::mcp::{tool_error, tools_list};
 use serde_json::Map;
 
-fn cfg(allowed: Option<&str>) -> Config {
-    Config {
-        github_allowed_repos: allowed.map(str::to_owned),
-        ..Default::default()
-    }
-}
-
-fn two() -> Config {
-    cfg(Some("nyuchi/web-services,nyuchi/api-gateway"))
-}
-
 #[test]
-fn an_allowlisted_repo_resolves_to_owner_and_name() {
+fn a_repo_slug_resolves_to_owner_and_name() {
     assert_eq!(
-        resolve_repo(&two(), "nyuchi/api-gateway").unwrap(),
+        resolve_repo("nyuchi/api-gateway").unwrap(),
         ("nyuchi".to_owned(), "api-gateway".to_owned())
     );
 }
 
 #[test]
-fn the_allowlist_is_case_insensitive() {
+fn the_original_casing_is_preserved() {
     assert_eq!(
-        resolve_repo(&two(), "Nyuchi/API-Gateway").unwrap(),
+        resolve_repo("Nyuchi/API-Gateway").unwrap(),
         ("Nyuchi".to_owned(), "API-Gateway".to_owned())
     );
 }
 
 #[test]
-fn a_repo_outside_the_allowlist_is_refused() {
-    let e = resolve_repo(&two(), "nyuchi/mukoko-platform").unwrap_err();
-    assert!(e.message.contains("not allowlisted"), "{}", e.message);
-    assert_eq!(e.status, 403);
-}
-
-#[test]
-fn an_unset_allowlist_denies_everything_rather_than_allowing_everything() {
-    // A misconfigured worker should be useless, not open. This is the
-    // assertion that keeps a missing env var from becoming org-wide write
-    // access.
-    for v in [None, Some(""), Some("  ,  ")] {
-        let e = resolve_repo(&cfg(v), "nyuchi/api-gateway").unwrap_err();
-        assert!(e.message.contains("refusing every repo"), "{v:?}");
-    }
-}
-
-#[test]
 fn a_malformed_slug_is_rejected_before_any_call_is_made() {
-    let e = resolve_repo(&cfg(Some("api-gateway")), "api-gateway").unwrap_err();
+    let e = resolve_repo("api-gateway").unwrap_err();
     assert!(e.message.contains("expected owner/repo"), "{}", e.message);
 }
 
@@ -65,14 +36,13 @@ fn a_malformed_slug_is_rejected_before_any_call_is_made() {
 fn approve_is_refused_in_any_casing() {
     // An agent that can approve satisfies a branch protection review
     // requirement on its own, letting code reach a protected branch with no
-    // human having read it. This must fail before the allowlist is even
-    // consulted, so it cannot be reached by allowlisting a repo, and before
-    // any HTTP: the Mock has no routes, so a request would error differently.
+    // human having read it. This must fail before any HTTP: the Mock has no
+    // routes, so a request would error differently.
     let p = Mock::default();
     for event in ["APPROVE", "approve", "Approve"] {
         let e = run(create_review(
             &p,
-            &two(),
+            &Config::default(),
             "nyuchi/api-gateway",
             1,
             event,
@@ -89,27 +59,11 @@ fn approve_is_refused_in_any_casing() {
 }
 
 #[test]
-fn approve_is_refused_even_for_a_repo_that_is_not_allowlisted() {
-    let p = Mock::default();
-    let e = run(create_review(
-        &p,
-        &two(),
-        "other/repo",
-        1,
-        "APPROVE",
-        "x",
-        vec![],
-    ))
-    .unwrap_err();
-    assert!(e.to_string().contains("does not approve"));
-}
-
-#[test]
 fn an_unrecognised_review_event_is_refused() {
     let p = Mock::default();
     let e = run(create_review(
         &p,
-        &two(),
+        &Config::default(),
         "nyuchi/api-gateway",
         1,
         "MERGE",

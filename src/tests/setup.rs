@@ -42,10 +42,11 @@ fn an_invalid_code_is_never_echoed() {
 }
 
 #[test]
-fn the_post_install_page_is_served() {
+fn there_is_no_post_install_page_the_installer_stays_on_github() {
+    // No setup_url in the manifest: GitHub lands the installer on its own
+    // install page, where repository access is chosen.
     let res = get("/github-app/installed");
-    assert_eq!(res.status, 200);
-    assert!(res.body.contains("GITHUB_ALLOWED_REPOS"));
+    assert_eq!(res.status, 404);
 }
 
 fn manifest() -> Value {
@@ -72,10 +73,10 @@ fn the_app_manifest_is_least_privilege_and_on_the_canonical_host() {
         m["redirect_url"],
         "https://github.shamwari.ai/github-app/created"
     );
-    assert_eq!(
-        m["setup_url"],
-        "https://github.shamwari.ai/github-app/installed"
-    );
+    // No setup_url: GitHub's own install page receives the installer, not
+    // this Worker.
+    assert!(m.get("setup_url").is_none());
+    assert!(m.get("setup_on_update").is_none());
     // No user-to-server OAuth: the App never acts as a person.
     assert_eq!(m["request_oauth_on_install"], false);
     assert!(m.get("callback_urls").is_none());
