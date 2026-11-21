@@ -34,14 +34,11 @@ GITHUB_API = "https://api.github.com"
 
 # The App ID of "Shamwari for GitHub".
 #
-# TODO(owner): this is still the id of the CURRENT App (5579098, owned by the
-# bundu-labs ORGANISATION). The App is moving to be owned by the bundu-labs
-# ENTERPRISE (docs/enterprise-app-setup.md). Once the owner has registered it
-# and has its new id, change this one line, set the matching secrets
-# (GITHUB_APP_PRIVATE_KEY, GITHUB_WEBHOOK_SECRET) in the same release, and add
-# `checks:read` to GITHUB_TOKEN_PERMISSIONS below. Do NOT guess the id: a
-# value that does not match the key set as the secret makes every GitHub call
-# fail with 401.
+# 5579098 is the enterprise-owned App: the bundu-labs ENTERPRISE owns it (it
+# changed owner in place, keeping its id, so the new registration the runbook
+# expected never happened). Its private key and webhook secret are Worker
+# secrets; the id must match that key exactly or every GitHub call fails
+# with 401.
 #
 # An App ID is an identifier, not a credential: it grants nothing without the
 # private key, which is a Worker secret. It is committed rather than set in the
@@ -70,10 +67,10 @@ GITHUB_ALLOWED_REPOS = "nyuchi/web-services,nyuchi/api-gateway,nyuchi/mukoko-pla
 # App's manifest does: app-manifest.json) and the installation to have accepted
 # it, otherwise a token mint fails with 422. `shamwari_whoami` reports the gap
 # per repository. `checks:read` (the check-run rollup in
-# shamwari_get_pull_request) joins this list in the release that switches
-# GITHUB_APP_ID to the enterprise App, which is the first App guaranteed to hold
-# it; until then that rollup degrades to "no checks" rather than failing.
-GITHUB_TOKEN_PERMISSIONS = "pull_requests:write,issues:write,contents:read,metadata:read"
+# shamwari_get_pull_request) needs the App to hold Checks: read and the
+# installation to have accepted it; until then that rollup degrades to "no
+# checks" rather than failing.
+GITHUB_TOKEN_PERMISSIONS = "pull_requests:write,issues:write,contents:read,checks:read,metadata:read"
 
 # WORKOS_AUTHORIZATION_SERVER — the WorkOS AuthKit issuer MCP clients discover
 # from our resource metadata — is deliberately NOT a var here. It is REQUIRED
