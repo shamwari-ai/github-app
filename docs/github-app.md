@@ -70,12 +70,13 @@ Moving from the old App (`shamwari-for-github`, ID 5579098, owned by the
 has a new ID, key and webhook secret. The Worker is switched over with the
 runbook in [enterprise-app-setup.md](enterprise-app-setup.md).
 
-## Allowlist
+## Installations
 
-Installing the App on an organisation does not switch anything on. The
-Worker acts only on repositories listed in `GITHUB_ALLOWED_REPOS`
-(`wrangler.toml`), repository by repository, never by wildcard. Adding one is a
-pull request; it is the outer bound.
+The App is public: anyone may install it on their organisation. Installing
+it grants exactly what the installer selects — GitHub's own repository
+choice is the outer bound; there is no worker-side repository list. Each
+token the Worker mints is narrowed further, per repository and per
+permission, by `GITHUB_TOKEN_PERMISSIONS`.
 
 ## Rotating
 

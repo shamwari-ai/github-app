@@ -141,7 +141,6 @@ fn config_from(env: &Env) -> Config {
         github_app_private_key: b("GITHUB_APP_PRIVATE_KEY"),
         github_app_id: b("GITHUB_APP_ID"),
         github_api: b("GITHUB_API"),
-        github_allowed_repos: b("GITHUB_ALLOWED_REPOS"),
         github_token_permissions: b("GITHUB_TOKEN_PERMISSIONS"),
         github_webhook_secret: b("GITHUB_WEBHOOK_SECRET"),
         workos_jwks_url: b("WORKOS_JWKS_URL"),

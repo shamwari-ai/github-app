@@ -87,15 +87,15 @@ The only identity the Worker uses is the App: no PAT exists anywhere.
   `{"repositories":[<repo>],"permissions":<GITHUB_TOKEN_PERMISSIONS>}`: one
   repository, a reduced permission set. Cached per `owner/repo` (lower-cased)
   until 60 s before `expires_at`.
-- **Permission policy**: outer bound `GITHUB_ALLOWED_REPOS` (comma list, matched
-  case-insensitively; **empty or unset denies every repository**), checked
-  before any token is minted and again at the webhook. Inner bound
+- **Permission policy**: outer bound **what each installation grants** — the
+  App is public, anyone may install it, and GitHub's own repository selection
+  decides which repositories this worker can touch at all. Inner bound
   `GITHUB_TOKEN_PERMISSIONS` (default
   `pull_requests:write,issues:write,contents:read,metadata:read`).
   `workflows` is never requested, and `contents` is read-only, which is what
   makes a merge or push tool impossible rather than merely absent.
-- **No approval**: `createReview` refuses `APPROVE` (any casing) before the
-  allowlist is consulted, and refuses unknown events. The reviewer posts
+- **No approval**: `createReview` refuses `APPROVE` (any casing) before any
+  repository is touched, and refuses unknown events. The reviewer posts
   commit comments, which carry no review event at all.
 - **Errors**: GitHub failures become `"<context>: <GitHub's message>"` with
   GitHub's status. These (and argument errors) are the only messages shown to
@@ -125,11 +125,11 @@ Stateless: each POST is served on its own. Two eras from one tool table.
 
 ### Tools
 
-13 tools, `repo` is `owner/repo` and must pass the allowlist.
+13 tools, `repo` is `owner/repo` and must be granted by an installation.
 
 | Tool                             | Hints                | Arguments (besides `repo`)                                             |
 | -------------------------------- | -------------------- | ---------------------------------------------------------------------- |
-| `shamwari_whoami`                | read                 | none (probes every allowlisted repository)                             |
+| `shamwari_whoami`                | read                 | none (probes every installation)                                       |
 | `shamwari_list_pull_requests`    | read                 | `state` (open), `limit` 1-100 (20), `page`                             |
 | `shamwari_get_pull_request`      | read                 | `number`                                                               |
 | `shamwari_get_pull_request_diff` | read                 | `number`                                                               |
@@ -170,8 +170,8 @@ never retried.
 | a Bot's comment, an edited or deleted comment, a comment on an issue, a mention inside another word (`@shamwari-docs`, `me@shamwari.com`)                                                                       | skip                                          |
 | anything else                                                                                                                                                                                                   | skip                                          |
 
-A repository outside `GITHUB_ALLOWED_REPOS` is skipped before anything is
-spent.
+A delivery from a repository no installation grants is refused by the token
+mint; the webhook itself queues any delivery the App's installations cover.
 
 The review: fetch the diff, annotate every line with its new-file number
 (removed lines get none), cap at `REVIEW_MAX_DIFF_BYTES` (200,000) on a line

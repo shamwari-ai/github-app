@@ -20,7 +20,6 @@ const META: &str = "io.modelcontextprotocol/protocolVersion";
 fn cfg() -> Config {
     Config {
         mcp_resource_url: Some(AUDIENCE.into()),
-        github_allowed_repos: Some("nyuchi/web-services".into()),
         ..auth_config()
     }
 }
@@ -512,10 +511,16 @@ fn an_unexpected_error_is_logged_not_returned() {
 fn a_github_error_message_is_returned_because_it_is_written_for_the_caller() {
     let res = internal_error(
         &json!(1),
-        &Failure::GitHub(GitHubError::new("repo not allowlisted", 403)),
+        &Failure::GitHub(GitHubError::new(
+            "repository not granted by the installation",
+            403,
+        )),
     );
     assert_eq!(res.status, 502);
-    assert_eq!(parse(&res)["error"]["message"], "repo not allowlisted");
+    assert_eq!(
+        parse(&res)["error"]["message"],
+        "repository not granted by the installation"
+    );
 }
 
 // --- the tools, through tools/call (the TypeScript `mcp-helper` rpc) -----------------------
@@ -581,10 +586,10 @@ fn an_unknown_tool_is_an_invalid_params_error() {
 }
 
 #[test]
-fn a_repo_outside_the_allowlist_is_refused_through_tools_call_before_any_request() {
+fn a_malformed_repo_slug_is_refused_through_tools_call_before_any_request() {
     let p = Mock::default();
     let res = legacy_rpc(
-        json!({ "method": "tools/call", "params": { "name": "shamwari_get_issue", "arguments": { "repo": "evil/repo", "number": 1 } } }),
+        json!({ "method": "tools/call", "params": { "name": "shamwari_get_issue", "arguments": { "repo": "not-a-slug", "number": 1 } } }),
         &cfg(),
         &p,
     );
@@ -592,10 +597,10 @@ fn a_repo_outside_the_allowlist_is_refused_through_tools_call_before_any_request
     assert!(res["result"]["content"][0]["text"]
         .as_str()
         .unwrap()
-        .contains("not allowlisted"));
+        .contains("expected owner/repo"));
     assert!(
         p.requests.borrow().is_empty(),
-        "a repo outside the allowlist must never reach GitHub"
+        "a malformed slug must never reach GitHub"
     );
 }
 

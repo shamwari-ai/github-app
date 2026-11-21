@@ -36,35 +36,17 @@ fn api(cfg: &Config) -> &str {
 }
 
 // ---------------------------------------------------------------------------
-// Repository allowlist
+// Repository resolution
 // ---------------------------------------------------------------------------
 
-/// Resolve "owner/repo" and refuse anything outside GITHUB_ALLOWED_REPOS.
+/// Resolve "owner/repo" into its two parts, or refuse a malformed slug.
 ///
-/// Checked before a token is minted, so a repo outside the list never reaches
-/// GitHub. An unset/empty allowlist denies everything rather than allowing
-/// everything: a misconfigured worker should be useless, not open.
-pub fn resolve_repo(cfg: &Config, repo: &str) -> Result<(String, String), GitHubError> {
-    let allowed = split_csv(cfg.github_allowed_repos.as_deref());
-    if allowed.is_empty() {
-        return Err(GitHubError::new(
-            "no repositories are allowlisted (GITHUB_ALLOWED_REPOS is unset) — refusing every repo",
-            403,
-        ));
-    }
+/// Checked before a token is minted, so a malformed slug never reaches
+/// GitHub. There is no worker-side repository list: the outer bound is what
+/// each installation grants (GitHub's own repository selection), and the
+/// token mint narrows it further, per repository and per permission.
+pub fn resolve_repo(repo: &str) -> Result<(String, String), GitHubError> {
     let slug = repo.trim();
-    if !allowed
-        .iter()
-        .any(|a| a.to_lowercase() == slug.to_lowercase())
-    {
-        return Err(GitHubError::new(
-            format!(
-                "repository \"{slug}\" is not allowlisted; permitted: {}",
-                allowed.join(", ")
-            ),
-            403,
-        ));
-    }
     let mut it = slug.split('/');
     let (owner, name) = (it.next().unwrap_or(""), it.next().unwrap_or(""));
     if owner.is_empty() || name.is_empty() {
@@ -386,7 +368,7 @@ async fn installation_token<P: Platform>(
     Ok(token)
 }
 
-/// Authenticated REST call against an allowlisted repository.
+/// Authenticated REST call against a repository granted by an installation.
 async fn repo_api<P: Platform>(
     p: &P,
     cfg: &Config,
@@ -395,7 +377,7 @@ async fn repo_api<P: Platform>(
     method: &str,
     body: Option<Value>,
 ) -> GhResult<Value> {
-    let (owner, name) = resolve_repo(cfg, repo)?;
+    let (owner, name) = resolve_repo(repo)?;
     let token = installation_token(p, cfg, &owner, &name).await?;
     let mut extra = vec![("Authorization".to_owned(), format!("Bearer {token}"))];
     if body.is_some() {
@@ -420,7 +402,7 @@ async fn repo_text<P: Platform>(
     path: &str,
     accept: &str,
 ) -> GhResult<String> {
-    let (owner, name) = resolve_repo(cfg, repo)?;
+    let (owner, name) = resolve_repo(repo)?;
     let token = installation_token(p, cfg, &owner, &name).await?;
     let res = net(
         p,
@@ -465,68 +447,58 @@ pub async fn whoami<P: Platform>(p: &P, cfg: &Config) -> GhResult<Value> {
     .await?;
     let declared = app.get("permissions").cloned().unwrap_or_else(|| json!({}));
     let requested = requested_permissions(cfg);
-    let allowed = split_csv(cfg.github_allowed_repos.as_deref());
+    let installation_list = github_json(
+        p,
+        "GET",
+        format!("{}/app/installations", api(cfg)),
+        vec![("Authorization".into(), format!("Bearer {jwt}"))],
+        None,
+        "listing the App's installations",
+    )
+    .await?;
 
-    // Probe every allowlisted repository rather than reporting the App alone:
-    // a token mint asks for the WHOLE permission set at once, so one missing
-    // permission fails every tool, and an App declaring a permission does not
-    // mean the installation has accepted it.
-    let probes = allowed.iter().map(|slug| {
-        let (jwt, requested) = (jwt.clone(), requested.clone());
-        async move {
-            let mut it = slug.split('/');
-            let (owner, name) = (it.next().unwrap_or(""), it.next().unwrap_or(""));
-            if owner.is_empty() || name.is_empty() {
-                return json!({
-                    "repo": slug, "ok": false, "error": "malformed, expected owner/repo"
-                });
-            }
-            match installation_for(p, cfg, owner, name, &jwt).await {
-                Ok(install) => {
-                    let granted = install
-                        .get("permissions")
-                        .and_then(Value::as_object)
-                        .cloned()
-                        .unwrap_or_default();
-                    let missing = missing_permissions(&requested, &granted);
-                    let ok = missing.is_empty();
-                    json!({
-                        "repo": slug,
-                        "installed": true,
-                        "installation_id": install.get("id").cloned().unwrap_or(Value::Null),
-                        "repository_selection": install.get("repository_selection").cloned().unwrap_or(Value::Null),
-                        "granted": granted,
-                        "missing": missing,
-                        "ok": ok,
-                    })
-                }
-                Err(e) => {
-                    let status = match &e {
-                        Failure::GitHub(g) => g.status,
-                        _ => 0,
-                    };
-                    let msg = if status == 404 {
-                        "the App is not installed on this repository (or the installation does not include it)".to_owned()
-                    } else {
-                        e.to_string()
-                    };
-                    json!({ "repo": slug, "installed": false, "ok": false, "error": msg })
-                }
-            }
-        }
-    });
-    let repositories: Vec<Value> = futures_util::future::join_all(probes).await;
-
-    let broken: Vec<&str> = repositories
+    // Probe every installation rather than reporting the App alone: a token
+    // mint asks for the WHOLE permission set at once, so one missing
+    // permission fails every tool on that installation, and an App declaring
+    // a permission does not mean the installation has accepted it.
+    // `GET /app/installations` already carries what each installation holds,
+    // so no further requests are needed.
+    let installations: Vec<Value> = installation_list
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
         .iter()
-        .filter(|r| r.get("ok") != Some(&Value::Bool(true)))
-        .filter_map(|r| r.get("repo").and_then(Value::as_str))
+        .map(|install| {
+            let granted = install
+                .get("permissions")
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default();
+            let missing = missing_permissions(&requested, &granted);
+            json!({
+                "account": install.pointer("/account/login").cloned().unwrap_or(Value::Null),
+                "installation_id": install.get("id").cloned().unwrap_or(Value::Null),
+                "repository_selection": install.get("repository_selection").cloned().unwrap_or(Value::Null),
+                "granted": granted,
+                "missing": missing,
+                "ok": missing.is_empty(),
+            })
+        })
         .collect();
-    let note = if broken.is_empty() {
-        "Every allowlisted repository has an installation granting the permissions the scoped token asks for.".to_owned()
+
+    let broken: Vec<&str> = installations
+        .iter()
+        .filter(|i| i.get("ok") != Some(&Value::Bool(true)))
+        .filter_map(|i| i.get("account").and_then(Value::as_str))
+        .collect();
+    let note = if installations.is_empty() {
+        "The App is not installed anywhere yet; install it on an organisation to switch it on."
+            .to_owned()
+    } else if broken.is_empty() {
+        "Every installation grants the permissions the scoped token asks for.".to_owned()
     } else {
         format!(
-            "Not ready: {}. A token mint requests the whole permission set at once, so any gap here fails EVERY tool on that repository, not only the ones needing the missing permission. Note that adding a permission to the App leaves the installation pending an owner's approval — \"granted\" above is what the installation actually holds, which is what matters.",
+            "Not ready: {}. A token mint requests the whole permission set at once, so any gap here fails EVERY tool on that installation, not only the ones needing the missing permission. Note that adding a permission to the App leaves the installation pending an owner's approval — \"granted\" above is what the installation actually holds, which is what matters.",
             broken.join(", ")
         )
     };
@@ -542,7 +514,7 @@ pub async fn whoami<P: Platform>(p: &P, cfg: &Config) -> GhResult<Value> {
         "app": app_info,
         "app_declared_permissions": declared,
         "token_permissions_requested": requested,
-        "repositories": repositories,
+        "installations": installations,
         "ready": ready,
         "note": note,
     }))
@@ -923,8 +895,8 @@ pub async fn update_pull_request<P: Platform>(
 /// An agent that can approve can satisfy a repository's own review
 /// requirement and let code reach a protected branch with no human having
 /// read it. COMMENT and REQUEST_CHANGES carry every finding a review needs to
-/// carry, and neither one unblocks a merge. This runs before the allowlist is
-/// consulted, so allowlisting a repository cannot reach it.
+/// carry, and neither one unblocks a merge. This runs before any repository
+/// is touched, so no installation grant can reach it.
 pub async fn create_review<P: Platform>(
     p: &P,
     cfg: &Config,

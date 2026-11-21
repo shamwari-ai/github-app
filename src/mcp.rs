@@ -30,7 +30,7 @@ pub const SERVER_NAME: &str = "shamwari-github-mcp";
 pub const SERVER_TITLE: &str = "Shamwari for GitHub";
 pub const SERVER_VERSION: &str = "0.1.0";
 
-const INSTRUCTIONS: &str = "GitHub review, pull request and issue operations for allowlisted Nyuchi repositories. Call shamwari_whoami first: it reports, per repository, whether the App is installed and whether that installation grants the permissions the scoped token requests.";
+const INSTRUCTIONS: &str = "GitHub review, pull request and issue operations for the repositories the App is installed on. Call shamwari_whoami first: it reports, per installation, whether that installation grants the permissions the scoped token requests.";
 
 /// The only revision of the 2026 era this server speaks.
 pub const MODERN_VERSION: &str = "2026-07-28";
@@ -147,7 +147,7 @@ const STATE2: &[&str] = &["open", "closed"];
 
 fn repo() -> Field {
     f("repo", Kind::Str { min1: true })
-        .desc("Repository as owner/repo. Must be in the worker's allowlist.")
+        .desc("Repository as owner/repo, as granted by the installation.")
 }
 fn number() -> Field {
     f("number", Kind::Int { min: 1, max: None })
@@ -179,7 +179,7 @@ fn tools() -> Vec<ToolDef> {
         ToolDef {
             name: "shamwari_whoami",
             ann: READ,
-            description: "Verify the GitHub App credentials and report, for EVERY allowlisted repository, whether the App is installed there and whether that installation grants the permissions the scoped token asks for. Use this first when anything returns 422 or 404: a token mint requests the whole permission set in one call, so a single gap fails every tool on that repository, and a permission the App declares is not held until the installation owner accepts it.",
+            description: "Verify the GitHub App credentials and report, for EVERY installation, whether it grants the permissions the scoped token asks for. Use this first when anything returns 422 or 404: a token mint requests the whole permission set in one call, so a single gap fails every tool on that installation, and a permission the App declares is not held until the installation owner accepts it.",
             fields: vec![],
         },
         ToolDef {

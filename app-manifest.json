@@ -8,8 +8,6 @@
     "active": true
   },
   "redirect_url": "https://github.shamwari.ai/github-app/created",
-  "setup_url": "https://github.shamwari.ai/github-app/installed",
-  "setup_on_update": false,
   "request_oauth_on_install": false,
   "default_permissions": {
     "metadata": "read",
