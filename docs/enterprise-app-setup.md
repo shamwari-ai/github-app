@@ -191,7 +191,12 @@ To deploy by hand instead: `npx wrangler@4 deploy` from a clean checkout of
    connection), call `shamwari_whoami`. The client sends:
 
    ```json
-   {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"shamwari_whoami","arguments":{}}}
+   {
+     "jsonrpc": "2.0",
+     "id": 1,
+     "method": "tools/call",
+     "params": { "name": "shamwari_whoami", "arguments": {} }
+   }
    ```
 
    A healthy result has `"ready": true`, the new App's `slug` and `name`, and for
