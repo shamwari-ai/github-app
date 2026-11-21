@@ -278,9 +278,9 @@ reproduced.
 | `2025-06-18` | legacy | an `initialize` handshake                                                |
 
 The era is decided from the body; the mirrored headers and the `_meta`
-envelope are validated, and the status codes follow (an unknown modern method is 404, a header
-mismatch or unsupported version is 400). `GET` and `DELETE` on the endpoint are
-405. Replies are `application/json`.
+envelope are validated, and the status codes follow (an unknown modern method
+is 404, a header mismatch or unsupported version is 400). `GET` and `DELETE`
+on the endpoint are 405. Replies are `application/json`.
 
 What happens in front of it, in `src/router.rs`: the `Origin` check (403 when
 it is present and not this resource's) and WorkOS token verification, then the

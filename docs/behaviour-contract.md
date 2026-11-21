@@ -10,18 +10,18 @@ Everything is served on `github.shamwari.ai` (and `github.nyuchi.dev`, see
 
 ## HTTP routes
 
-| Route                                                 | Auth        | Answer                                                                     |
-| ----------------------------------------------------- | ----------- | -------------------------------------------------------------------------- |
-| `OPTIONS *`                                           | none        | `204` with the CORS headers                                                |
-| `GET /health`                                         | none        | `{"status":"ok","server":"shamwari-github-mcp"}`                           |
-| `POST /webhook`                                       | HMAC        | GitHub deliveries (below). Other methods: `405`                            |
-| `GET /.well-known/agent-card.json` and `/agent.json`  | none        | A2A agent card; `503` while `WORKOS_AUTHORIZATION_SERVER` is unset         |
-| `GET /.well-known/oauth-protected-resource[/mcp]`     | none        | RFC 9728 metadata; `503` while `WORKOS_AUTHORIZATION_SERVER` is unset      |
-| `GET /github-app/new`, `/created?code=`, `/installed` | none        | App setup pages. Inert: they hold and exchange nothing                     |
-| `POST /mcp`                                           | WorkOS JWT  | MCP over Streamable HTTP, stateless JSON-RPC 2.0                           |
-| `POST /a2a`                                           | WorkOS JWT  | A2A 1.0, one method: `SendMessage`                                         |
-| `GET`/`DELETE` on `/mcp` or `/a2a`                    | none needed | `405` (checked before auth: sessions and the GET stream do not exist)      |
-| anything else                                         | none        | `404 {"error":"not found"}`                                                |
+| Route                                                 | Auth        | Answer                                                                |
+| ----------------------------------------------------- | ----------- | --------------------------------------------------------------------- |
+| `OPTIONS *`                                           | none        | `204` with the CORS headers                                           |
+| `GET /health`                                         | none        | `{"status":"ok","server":"shamwari-github-mcp"}`                      |
+| `POST /webhook`                                       | HMAC        | GitHub deliveries (below). Other methods: `405`                       |
+| `GET /.well-known/agent-card.json` and `/agent.json`  | none        | A2A agent card; `503` while `WORKOS_AUTHORIZATION_SERVER` is unset    |
+| `GET /.well-known/oauth-protected-resource[/mcp]`     | none        | RFC 9728 metadata; `503` while `WORKOS_AUTHORIZATION_SERVER` is unset |
+| `GET /github-app/new`, `/created?code=`, `/installed` | none        | App setup pages. Inert: they hold and exchange nothing                |
+| `POST /mcp`                                           | WorkOS JWT  | MCP over Streamable HTTP, stateless JSON-RPC 2.0                      |
+| `POST /a2a`                                           | WorkOS JWT  | A2A 1.0, one method: `SendMessage`                                    |
+| `GET`/`DELETE` on `/mcp` or `/a2a`                    | none needed | `405` (checked before auth: sessions and the GET stream do not exist) |
+| anything else                                         | none        | `404 {"error":"not found"}`                                           |
 
 Order matters and is kept: `OPTIONS`, `/health`, `/webhook`, agent card,
 resource metadata, setup pages, then `/mcp` and `/a2a` (405 for GET/DELETE,
@@ -40,7 +40,7 @@ request needs `Authorization: Bearer <RS256 JWT>`.
 - **Origin**: an `Origin` header, when present, must equal the origin of the
   resource URL; absent is allowed (non-browser clients). Refused with `403`.
 - **No token**: `401`, `WWW-Authenticate: Bearer resource_metadata="<served
-  host>/.well-known/oauth-protected-resource"`.
+host>/.well-known/oauth-protected-resource"`.
 - **Rejected token**: `401` with `error="invalid_token"` and an
   `error_description` that names the gate (never the token or its claims). The
   log records the gate and what the token carried.
@@ -127,21 +127,21 @@ Stateless: each POST is served on its own. Two eras from one tool table.
 
 13 tools, `repo` is `owner/repo` and must pass the allowlist.
 
-| Tool                              | Hints                    | Arguments (besides `repo`)                                        |
-| --------------------------------- | ------------------------ | ----------------------------------------------------------------- |
-| `shamwari_whoami`                 | read                     | none (probes every allowlisted repository)                        |
-| `shamwari_list_pull_requests`     | read                     | `state` (open), `limit` 1-100 (20), `page`                        |
-| `shamwari_get_pull_request`       | read                     | `number`                                                          |
-| `shamwari_get_pull_request_diff`  | read                     | `number`                                                          |
-| `shamwari_list_issues`            | read                     | `state` (open), `limit` 1-100 (20), `page`                        |
-| `shamwari_get_issue`              | read                     | `number`                                                          |
-| `shamwari_create_review`          | create                   | `number`, `event` COMMENT or REQUEST_CHANGES, `body`, `comments`  |
-| `shamwari_create_pull_request`    | create                   | `title`, `head`, `base`, `body`, `draft` (**true**)               |
-| `shamwari_create_issue`           | create                   | `title`, `body`, `labels`, `assignees`                            |
-| `shamwari_comment`                | create                   | `number`, `body`                                                  |
-| `shamwari_review_pull_request`    | create (can post)        | `number`, `model`, `post` (false), `head_sha`, `max_findings`, `force` |
-| `shamwari_update_pull_request`    | update (destructive)     | `number`, one of `title`/`body`/`base`/`state`                    |
-| `shamwari_update_issue`           | update (destructive)     | `number`, one of `title`/`body`/`state`/`labels`/`assignees`      |
+| Tool                             | Hints                | Arguments (besides `repo`)                                             |
+| -------------------------------- | -------------------- | ---------------------------------------------------------------------- |
+| `shamwari_whoami`                | read                 | none (probes every allowlisted repository)                             |
+| `shamwari_list_pull_requests`    | read                 | `state` (open), `limit` 1-100 (20), `page`                             |
+| `shamwari_get_pull_request`      | read                 | `number`                                                               |
+| `shamwari_get_pull_request_diff` | read                 | `number`                                                               |
+| `shamwari_list_issues`           | read                 | `state` (open), `limit` 1-100 (20), `page`                             |
+| `shamwari_get_issue`             | read                 | `number`                                                               |
+| `shamwari_create_review`         | create               | `number`, `event` COMMENT or REQUEST_CHANGES, `body`, `comments`       |
+| `shamwari_create_pull_request`   | create               | `title`, `head`, `base`, `body`, `draft` (**true**)                    |
+| `shamwari_create_issue`          | create               | `title`, `body`, `labels`, `assignees`                                 |
+| `shamwari_comment`               | create               | `number`, `body`                                                       |
+| `shamwari_review_pull_request`   | create (can post)    | `number`, `model`, `post` (false), `head_sha`, `max_findings`, `force` |
+| `shamwari_update_pull_request`   | update (destructive) | `number`, one of `title`/`body`/`base`/`state`                         |
+| `shamwari_update_issue`          | update (destructive) | `number`, one of `title`/`body`/`state`/`labels`/`assignees`           |
 
 Every tool carries `readOnlyHint`, `destructiveHint`, `idempotentHint` and
 `openWorldHint`. There is no approve tool and no merge tool. List results are
@@ -159,16 +159,16 @@ hex digits). Unset secret: `503`. Bad or missing signature: `401`. Non-JSON:
 `400`. Answered at once; the review runs after the response (`waitUntil`),
 never retried.
 
-| Event / action                                       | Result                                                        |
-| ---------------------------------------------------- | ------------------------------------------------------------- |
-| `ping`                                               | skip                                                          |
-| `pull_request` `synchronize` (before and after, not all zeros) | review **that push** (`compare` diff)               |
-| `pull_request` `opened`, `ready_for_review`, first push | review the **whole** pull request                          |
-| any `pull_request` action on a **draft**             | skip (the draft rule, checked on the payload)                 |
-| closed or merged pull request                        | skip                                                          |
-| `issue_comment` `created` mentioning `REVIEW_MENTION` (default `@shamwari`), on a pull request, by a human whose `author_association` is in `REVIEW_TRIGGER_ASSOCIATIONS` (default OWNER, MEMBER, COLLABORATOR) | review, **forced**, drafts allowed |
-| a Bot's comment, an edited or deleted comment, a comment on an issue, a mention inside another word (`@shamwari-docs`, `me@shamwari.com`) | skip |
-| anything else                                        | skip                                                          |
+| Event / action                                                                                                                                                                                                  | Result                                        |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `ping`                                                                                                                                                                                                          | skip                                          |
+| `pull_request` `synchronize` (before and after, not all zeros)                                                                                                                                                  | review **that push** (`compare` diff)         |
+| `pull_request` `opened`, `ready_for_review`, first push                                                                                                                                                         | review the **whole** pull request             |
+| any `pull_request` action on a **draft**                                                                                                                                                                        | skip (the draft rule, checked on the payload) |
+| closed or merged pull request                                                                                                                                                                                   | skip                                          |
+| `issue_comment` `created` mentioning `REVIEW_MENTION` (default `@shamwari`), on a pull request, by a human whose `author_association` is in `REVIEW_TRIGGER_ASSOCIATIONS` (default OWNER, MEMBER, COLLABORATOR) | review, **forced**, drafts allowed            |
+| a Bot's comment, an edited or deleted comment, a comment on an issue, a mention inside another word (`@shamwari-docs`, `me@shamwari.com`)                                                                       | skip                                          |
+| anything else                                                                                                                                                                                                   | skip                                          |
 
 A repository outside `GITHUB_ALLOWED_REPOS` is skipped before anything is
 spent.

@@ -143,7 +143,10 @@ code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/mcp" -H "Authorizat
 [[ "$code" == 400 ]] && pass "modern request without Mcp-Method is 400" || fail "missing Mcp-Method gave $code"
 
 # whoami: the Worker signs an App JWT in wasm, calls the stand-in GitHub API.
+started=$(python3 -c 'import time; print(time.time())')
 who=$(rpc -d '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"shamwari_whoami","arguments":{}}}')
+elapsed=$(python3 -c "import time; print(round((time.time() - $started) * 1000))")
+echo "info whoami (parse key, sign in wasm, 4 stub calls): ${elapsed} ms wall clock"
 text=$(jq -r '.result.content[0].text' <<<"$who")
 [[ "$(jq -r .ready <<<"$text" 2>/dev/null)" == true ]] && pass "shamwari_whoami reports ready" || { echo "$who" >&2; fail "whoami not ready"; }
 jwt=$(cat "$WORK/app-jwt.txt")
@@ -154,6 +157,11 @@ openssl rsa -in "$WORK/app.pem" -pubout -out "$WORK/app.pub" 2>/dev/null
 openssl dgst -sha256 -verify "$WORK/app.pub" -signature "$WORK/sig.bin" "$WORK/signed.txt" >/dev/null \
   && pass "the App JWT signed in wasm verifies with the matching public key (openssl)" || fail "App JWT signature invalid"
 [[ "$(printf '%s' "$jp" | tr '_-' '/+' | { cat; printf '=='; } | openssl base64 -d -A 2>/dev/null | jq -r .iss)" == 424242 ]] && pass "the JWT iss is GITHUB_APP_ID from vars"
+
+# public pages
+card=$(curl -fsS "$BASE/.well-known/agent-card.json")
+[[ "$(jq -r .protocolVersion <<<"$card")" == 1.0 ]] && pass "A2A agent card (protocol 1.0)" || fail "agent card: $card"
+curl -fsS "$BASE/github-app/new" | grep -q 'enterprises/bundu-labs/settings/apps/new' && pass "/github-app/new posts to the bundu-labs enterprise" || fail "setup page"
 
 # webhook: HMAC-SHA256 over the raw body.
 body='{"zen":"smoke"}'
