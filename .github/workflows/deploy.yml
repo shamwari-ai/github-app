@@ -52,10 +52,7 @@ jobs:
         run: rustup show
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: package.json and Cargo.toml agree on the version
-        run: |
-          pkg=$(jq -r .version package.json)
-          crate=$(cargo metadata --no-deps --format-version 1 --locked | jq -r '.packages[0].version')
-          test "$pkg" = "$crate" || { echo "::error::package.json is $pkg but Cargo.toml is $crate"; exit 1; }
+        run: node scripts/check-version.mjs
       - name: rustfmt
         run: cargo fmt --check
       - name: clippy (host)
