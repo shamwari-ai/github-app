@@ -1,6 +1,6 @@
 [package]
 name = "shamwari-github-mcp"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Shamwari for GitHub: GitHub App and MCP server on Cloudflare Workers (github.shamwari.ai)"
 repository = "https://github.com/shamwari-ai/github-app"
