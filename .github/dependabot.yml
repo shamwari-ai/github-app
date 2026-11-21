@@ -1,11 +1,14 @@
-# Version updates open against staging (main takes releases only) and wait a
-# few days after a release. Security updates are not held back by the
-# cooldown. Ignore entries need an expiry and an issue number.
+# Version updates open against main (trunk-based: there is no staging branch)
+# and wait a few days after a release. Security updates are not held back by
+# the cooldown. Ignore entries need an expiry and an issue number.
+#
+# When a `worker` crate bump lands, bump `worker-build` to the same version in
+# wrangler.toml's [build] command in that pull request: dependabot cannot see
+# it there, and the generated shim is only guaranteed against its own crate.
 version: 2
 updates:
-  - package-ecosystem: npm
+  - package-ecosystem: cargo
     directory: /
-    target-branch: staging
     schedule:
       interval: daily
     cooldown:
@@ -15,7 +18,6 @@ updates:
         patterns: ["*"]
   - package-ecosystem: github-actions
     directory: /
-    target-branch: staging
     schedule:
       interval: weekly
     cooldown:
