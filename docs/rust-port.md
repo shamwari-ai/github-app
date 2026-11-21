@@ -282,7 +282,13 @@ Rust toolchain**, so the build is self-sufficient: `scripts/build-worker.sh`
 installs rustup if it is missing, the toolchain `rust-toolchain.toml` pins
 (stable plus `wasm32-unknown-unknown`), a pinned `worker-build` and then runs
 `worker-build --release`. It was run from a bare environment with no Rust
-installed to prove it. Expect a first build of several minutes.
+installed to prove it. Expect a first build of several minutes. Workers Builds
+runs the build twice (the dashboard's build command, then `wrangler deploy`
+running `[build]` from `wrangler.toml`); the script hashes its sources and
+skips the second run, so only the first one pays.
+
+`package.json` carries a single `build` script, `bash scripts/build-worker.sh`,
+so the dashboard's default `npm run build` works without changing it.
 
 Check these in the dashboard: **Workers & Pages**, `shamwari-github-mcp`,
 **Settings**, **Builds**.
@@ -292,7 +298,7 @@ Check these in the dashboard: **Workers & Pages**, `shamwari-github-mcp`,
 | Git repository               | `shamwari-ai/github-app`                                 |
 | Production branch            | `main`                                                   |
 | Root directory               | `/` (where `wrangler.toml` is; the default)              |
-| Build command                | `bash scripts/build-worker.sh`                           |
+| Build command                | `npm run build` (the default; it runs the script above)  |
 | Deploy command               | `npx wrangler@4.166.0 deploy`                            |
 | Non-production branch builds | **off** (there is no staging branch; no preview command) |
 | Build watch paths            | include `*`, exclude nothing (the default)               |

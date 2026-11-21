@@ -14,6 +14,17 @@ WORKER_BUILD_VERSION="0.9.0"
 
 cd "$(dirname "$0")/.."
 
+# Workers Builds runs this twice in one container: once as the dashboard's
+# build command (`npm run build`, see package.json) and again when
+# `wrangler deploy` runs [build] from wrangler.toml. Skip the second run when
+# the sources are unchanged and the output is there.
+STAMP="build/.sources-hash"
+SOURCES_HASH="$(find src Cargo.toml Cargo.lock rust-toolchain.toml scripts/build-worker.sh -type f 2>/dev/null | LC_ALL=C sort | xargs shasum | shasum | cut -d' ' -f1)"
+if [ -f build/worker/shim.mjs ] && [ -f "$STAMP" ] && [ "$(cat "$STAMP")" = "$SOURCES_HASH" ]; then
+  echo "build-worker: build/worker is up to date for these sources; skipping"
+  exit 0
+fi
+
 export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"
 
 if ! command -v rustup >/dev/null 2>&1; then
@@ -29,3 +40,5 @@ rustup target list --installed
 
 cargo install -q worker-build --version "=${WORKER_BUILD_VERSION}" --locked
 worker-build --release
+mkdir -p build
+printf %s "$SOURCES_HASH" > "$STAMP"
