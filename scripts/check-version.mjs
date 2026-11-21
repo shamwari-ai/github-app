@@ -1,8 +1,10 @@
 // Fails when package.json and Cargo.toml disagree about the version.
 //
-// package.json is a version-only file (name, version, private). It exists
-// because the org's Release version check treats removing a version from it
-// as a reset; the crate is the real source of the version. Bump both together.
+// package.json holds only name, version, private and one `build` script that
+// runs scripts/build-worker.sh (so the Workers Builds default `npm run build`
+// works). It exists because the org's Release version check treats removing a
+// version from it as a reset; the crate is the real source of the version.
+// Bump both together.
 import { readFileSync } from "node:fs";
 
 const pkg = JSON.parse(readFileSync("package.json", "utf8")).version;

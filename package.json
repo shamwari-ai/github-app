@@ -1,5 +1,8 @@
 {
   "name": "shamwari-github-mcp",
   "version": "0.2.0",
-  "private": true
+  "private": true,
+  "scripts": {
+    "build": "bash scripts/build-worker.sh"
+  }
 }
