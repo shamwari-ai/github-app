@@ -174,7 +174,9 @@ test("server/discover returns supported versions, capabilities and identity", as
   assert.deepEqual(r.body.result.supportedVersions, [MODERN_VERSION]);
   assert.equal(r.body.result.resultType, "complete");
   assert.ok(r.body.result.capabilities.tools);
-  assert.ok(r.body.result._meta["io.modelcontextprotocol/serverInfo"].name);
+  const info = r.body.result._meta["io.modelcontextprotocol/serverInfo"];
+  assert.ok(info.name);
+  assert.equal(info.title, "Shamwari for GitHub");
 });
 
 test("an unknown method is 404, not 200", async () => {

@@ -21,17 +21,21 @@ routes = [{ pattern = "github.shamwari.ai", custom_domain = true }]
 [vars]
 GITHUB_API = "https://api.github.com"
 
-# The App ID. This is the SAME App that mints release tokens
-# (RELEASE_APP_ID), reused by explicit decision. The App holds Contents,
-# Pull requests and Workflows read/write; the two settings below are what
-# stop the agent inheriting all of that.
+# The App ID of "Shamwari for GitHub", owned by bundu-labs
+# (https://github.com/apps/shamwari-for-github). This Worker has its own App:
+# it no longer borrows the Nyuchi release App's identity. The App holds
+# Contents, Pull requests and Workflows read/write; the two settings below are
+# what stop the agent inheriting all of that.
 #
 # Committed rather than set in the dashboard for two reasons. An App ID is an
 # identifier, not a credential — it grants nothing without the private key,
 # which is a Worker secret. And `wrangler deploy` REPLACES the deployed [vars]
 # block, so a value set only in the dashboard is silently overwritten by the
 # next deploy; it has to live here to survive.
-GITHUB_APP_ID = "4980118"
+#
+# The Worker secret GITHUB_APP_PRIVATE_KEY must be this App's key (set it with
+# scripts/github-app-convert.sh secrets) before a deploy that carries this id.
+GITHUB_APP_ID = "5579098"
 
 # OUTER BOUND — repositories this worker will touch at all. Checked before a
 # token is minted, so a repo outside this list never reaches GitHub. An empty
@@ -137,8 +141,8 @@ REVIEW_ENABLED = "true"
 #   GITHUB_APP_PRIVATE_KEY  The App's .pem, whole file including the BEGIN/END
 #                           lines. PKCS#1 ("BEGIN RSA PRIVATE KEY", what
 #                           GitHub hands you) or PKCS#8 both work — the worker
-#                           wraps PKCS#1 itself, so this is byte-identical to
-#                           RELEASE_APP_PRIVATE_KEY with no conversion.
+#                           wraps PKCS#1 itself, so the downloaded file is
+#                           used as it is, with no conversion.
 #   WORKOS_AUTHORIZATION_SERVER  the AuthKit domain (https origin)
 #   WORKOS_JWKS_URL         <AuthKit domain>/oauth2/jwks
 #   WORKOS_ISSUER           <AuthKit domain>
