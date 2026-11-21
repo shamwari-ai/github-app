@@ -220,7 +220,7 @@ handler against a stand-in GitHub).
 | `auth::a_tampered_payload_fails_signature_verification`                                      |
 | `auth::a_non_rs256_token_and_a_malformed_token_are_refused`                                  |
 | `auth::the_jwks_is_cached_between_verifications`                                             |
-| `policy::an_unrecognised_review_event_is_refused`                                             |
+| `policy::an_unrecognised_review_event_is_refused`                                            |
 | `policy::there_is_no_approve_tool_and_no_merge_tool`                                         |
 | `policy::the_tool_names_are_exactly_the_ones_the_typescript_server_exposed`                  |
 | `review::the_annotated_text_is_exactly_what_the_model_is_shown`                              |
