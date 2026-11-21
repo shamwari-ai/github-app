@@ -8,6 +8,10 @@ tests, `vite-plus`). It is now Rust on [`workers-rs`](https://github.com/cloudfl
 does it: where each TypeScript module went, where each TypeScript test went,
 and everything that is deliberately different.
 
+> `package.json` holds only `name`, `version` and `private`. It exists because
+> the org's Release version check treats removing a version from it as a reset;
+> CI fails if its version differs from `Cargo.toml`'s. Bump both together.
+
 ## Layout
 
 ```text
