@@ -11,9 +11,10 @@ App, owned by the bundu-labs enterprise. Moved here from
 - **Big work lives in GitHub issues** in this repo: plan, decisions and
   status, so another session can pick it up. Open or update the issue before
   starting, and link it from the PR.
-- Branches: trunk-based. Pull requests target `main`, and a merge to `main`
-  deploys and releases (the version is the next tag, bumped from the PR
-  title). There is **no `staging` branch** and it is never re-added. Go
+- Branches: trunk-based. Pull requests target `main`, and a merge to `main` is
+  built and deployed by Cloudflare Workers Builds (not GitHub Actions: no
+  Cloudflare secret lives in GitHub) and released (the version is the next
+  tag, bumped from the PR title). There is **no `staging` branch** and it is never re-added. Go
   through the merge queue (`gh pr merge <n>`, no strategy flag), no bypassing
   rulesets, no `--no-verify`.
 - Checks: the org-required "Org lint" workflow runs the `vite-plus` jobs (fmt,

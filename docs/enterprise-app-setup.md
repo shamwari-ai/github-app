@@ -21,19 +21,10 @@ Background: [github-app.md](github-app.md).
   do step 3.
 - Tools on your machine: `gh` (signed in), `op` (signed in, with access to the
   vault `Bundu Infrastructure`), `jq`, Node (for `npx wrangler`).
-- Deploys from CI need two repository secrets that are **missing today**, which
-  is why every deploy since 2 November has failed. Add them once, with the value
-  read from stdin so it is never on a command line:
-
-  ```bash
-  gh secret set CLOUDFLARE_ACCOUNT_ID --repo shamwari-ai/github-app --body 125a2dfbc21f76a25c980609609e8218
-  gh secret set CLOUDFLARE_API_TOKEN --repo shamwari-ai/github-app
-  ```
-
-  The second prompts for the token. Create it at
-  <https://dash.cloudflare.com/profile/api-tokens> from the **Edit Cloudflare
-  Workers** template, restricted to the _Nyuchi Web Services_ account. It needs
-  Workers Scripts: Edit and nothing else.
+- The Worker is built and deployed by **Cloudflare Workers Builds** (the
+  dashboard's Git connection to this repository), not by GitHub Actions, so no
+  Cloudflare secret lives in GitHub. Check its settings once, against the table
+  in [rust-port.md](rust-port.md#cloudflare-workers-builds-settings).
 
 ## 1. Free the name
 
@@ -176,13 +167,11 @@ Open a pull request that changes, in `wrangler.toml`:
   `pull_requests:write,issues:write,contents:read,checks:read,metadata:read`
   (adds `checks:read`, which the new App holds).
 
-Get it through the merge queue (`gh pr merge <n>`, no strategy flag). The merge
-to `main` deploys (the Deploy workflow, using the secrets from step 0). The
-deployed `[vars]` block is replaced by the committed one, so this edit is the
-only place the ID lives.
-
-To deploy by hand instead: `npx wrangler@4 deploy` from a clean checkout of
-`main`, with `CLOUDFLARE_ACCOUNT_ID` set.
+Get it through the merge queue (`gh pr merge <n>`, no strategy flag). Cloudflare
+Workers Builds builds and deploys every push to `main`. The deployed `[vars]`
+block is replaced by the committed one, so this edit is the only place the ID
+lives. To deploy by hand instead: `npx wrangler@4.166.0 deploy` from a clean
+checkout of `main`.
 
 ## 6. Verify
 

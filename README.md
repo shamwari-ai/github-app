@@ -120,8 +120,10 @@ scripts/smoke-local.sh         # the built wasm on workerd, throwaway keys
 ```
 
 `wrangler dev` and `wrangler deploy` run the `[build]` command in
-`wrangler.toml` (`cargo install worker-build`, pinned, then `worker-build
---release`) and deploy `build/worker/shim.mjs`. Use a current wrangler 4.x:
+`wrangler.toml` (`scripts/build-worker.sh`: installs rustup and the pinned
+toolchain if missing, a pinned `worker-build`, then `worker-build --release`) and
+deploy `build/worker/shim.mjs`. Cloudflare Workers Builds deploys every push to
+`main`; its dashboard settings are in [docs/rust-port.md](docs/rust-port.md). Use a current wrangler 4.x:
 `workers-rs` calls the `cloudflare:workers` tracing export, which older local
 runtimes lack. How the Rust port maps onto the TypeScript it replaced, test by
 test, is in [docs/rust-port.md](docs/rust-port.md); what the Worker does is in

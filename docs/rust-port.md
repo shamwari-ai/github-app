@@ -271,6 +271,48 @@ handler against a stand-in GitHub).
 | `webhook::the_trigger_associations_are_configurable`                                         |
 | `webhook::a_mention_on_a_closed_pull_request_is_skipped`                                     |
 
+## Cloudflare Workers Builds settings
+
+The Worker is built and deployed by Cloudflare Workers Builds, not GitHub
+Actions: every push to `main` builds and deploys, and GitHub holds no Cloudflare
+credential. `.github/workflows/ci.yml` only checks.
+
+The Workers Builds image (Ubuntu 24.04 with Node, Python, Go and Ruby) has **no
+Rust toolchain**, so the build is self-sufficient: `scripts/build-worker.sh`
+installs rustup if it is missing, the toolchain `rust-toolchain.toml` pins
+(stable plus `wasm32-unknown-unknown`), a pinned `worker-build` and then runs
+`worker-build --release`. It was run from a bare environment with no Rust
+installed to prove it. Expect a first build of several minutes.
+
+Check these in the dashboard: **Workers & Pages**, `shamwari-github-mcp`,
+**Settings**, **Builds**.
+
+| Setting                      | Value                                                    |
+| ---------------------------- | -------------------------------------------------------- |
+| Git repository               | `shamwari-ai/github-app`                                 |
+| Production branch            | `main`                                                   |
+| Root directory               | `/` (where `wrangler.toml` is; the default)              |
+| Build command                | `bash scripts/build-worker.sh`                           |
+| Deploy command               | `npx wrangler@4.166.0 deploy`                            |
+| Non-production branch builds | **off** (there is no staging branch; no preview command) |
+| Build watch paths            | include `*`, exclude nothing (the default)               |
+| Build variables and secrets  | none needed                                              |
+| API token                    | the one Cloudflare generated for the connection          |
+
+Why these values:
+
+- The Build command is set explicitly even though `wrangler.toml` has a `[build]`
+  section running the same script, because Cloudflare's documentation says
+  Workers Builds does not read the custom-build settings of a Wrangler
+  configuration. The deploy then runs the script again through `[build]`, which
+  is a fast no-op rebuild; if either path stops working the other still builds.
+- The Deploy command pins wrangler. Workers Builds takes its Wrangler version
+  from `package.json`, which here has none, and `workers-rs` 0.9 needs a recent
+  one (see below). Keep it equal to `WRANGLER_VERSION` in `ci.yml`.
+- `account_id` stays committed in `wrangler.toml`; it is public configuration.
+- The App's private key and webhook secret are Worker secrets, not build
+  variables: set them with `scripts/github-app-convert.sh secrets`.
+
 ## What differs, and what cannot be preserved
 
 Nothing below weakens a security property in the contract; each is a
@@ -327,7 +369,7 @@ Run on the branch that introduced this page:
 | ------------------------------------------------------- | ----------------------------------------------------------------- |
 | `cargo fmt --check`                                     | clean                                                             |
 | `cargo clippy --all-targets -- -D warnings`             | clean, host and `wasm32-unknown-unknown`                          |
-| `cargo test`                                            | 210 passed                                                        |
+| `cargo test`                                            | 211 passed                                                        |
 | `cargo build --target wasm32-unknown-unknown --release` | builds                                                            |
 | `worker-build --release`                                | builds (via `wrangler`'s `[build]`)                               |
 | `wrangler deploy --dry-run`                             | OK: 1706 KiB, 603 KiB gzipped; bindings as before; needs no login |

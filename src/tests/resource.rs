@@ -148,3 +148,40 @@ fn the_committed_wrangler_toml_names_only_real_hosts() {
         assert!(h == "github.shamwari.ai" || h == "github.nyuchi.dev", "{h}");
     }
 }
+
+#[test]
+fn top_level_wrangler_settings_are_not_swallowed_by_a_table() {
+    // TOML assigns every key after a `[table]` header to that table. An
+    // earlier draft put `[build]` above `account_id`, `workers_dev`,
+    // `preview_urls` and `routes`, silently moving them into `[build]` (where
+    // wrangler ignores them, dropping the custom domain on deploy).
+    let toml = include_str!("../../wrangler.toml");
+    let first_table = toml
+        .lines()
+        .position(|l| l.starts_with('['))
+        .expect("wrangler.toml has tables");
+    let top: Vec<&str> = toml.lines().take(first_table).collect();
+    for key in [
+        "name",
+        "main",
+        "compatibility_date",
+        "account_id",
+        "workers_dev",
+        "preview_urls",
+        "routes",
+    ] {
+        assert!(
+            top.iter().any(|l| l.starts_with(&format!("{key} = "))),
+            "{key} must be a top-level key, above the first [table]"
+        );
+    }
+    assert!(toml.contains("main = \"build/worker/shim.mjs\""));
+    assert!(toml.contains("preview_urls = false"));
+    assert!(
+        !toml
+            .lines()
+            .filter(|l| !l.trim_start().starts_with('#'))
+            .any(|l| l.to_lowercase().contains("staging")),
+        "no staging configuration"
+    );
+}
