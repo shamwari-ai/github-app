@@ -1,0 +1,61 @@
+name: CI
+
+# Checks only. This workflow never deploys: the Worker is built and deployed by
+# Cloudflare Workers Builds (the dashboard's Git connection to this repository,
+# production branch main), so no Cloudflare credential exists in GitHub. See
+# docs/rust-port.md, "Cloudflare Workers Builds settings".
+#
+# Runs on pull requests, in the merge queue and on every push to main.
+# `merge_group` is what makes the checks run for a queued pull request:
+# without it the queue waits forever for a check that never starts. The
+# org-required "Org lint" workflow (actionlint, markdownlint, yamllint,
+# vite-plus) is separate and runs on every pull request regardless.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Newer than 4.87: workers-rs 0.9 needs the `tracing` export that older
+  # local runtimes lack. Keep in step with the Deploy command set in the
+  # Cloudflare dashboard (docs/rust-port.md).
+  WRANGLER_VERSION: 4.166.0
+
+jobs:
+  check:
+    name: Check (fmt, clippy, test, build)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: package.json and Cargo.toml agree on the version
+        run: node scripts/check-version.mjs
+      # rust-toolchain.toml pins the channel, components and the wasm target;
+      # `rustup show` installs exactly that.
+      - name: Install the pinned Rust toolchain
+        run: rustup show
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: rustfmt
+        run: cargo fmt --check
+      - name: clippy (host)
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: clippy (wasm32)
+        run: cargo clippy --locked --target wasm32-unknown-unknown -- -D warnings
+      - name: Tests
+        run: cargo test --locked
+      # Runs wrangler.toml's [build] command (scripts/build-worker.sh) and
+      # bundles the Worker, uploading nothing and needing no credential.
+      - name: Build the Worker as Cloudflare does (dry run)
+        run: npx --yes "wrangler@${WRANGLER_VERSION}" deploy --dry-run --outdir "${RUNNER_TEMP}/worker-dry-run"

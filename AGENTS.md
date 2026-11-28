@@ -1,28 +1,36 @@
 # AGENTS.md
 
-Shamwari for GitHub: a Cloudflare Worker (`shamwari-github-mcp`) serving an
-MCP server, an A2A endpoint and a GitHub webhook at **github.shamwari.ai**,
-acting on GitHub only as the **Shamwari for GitHub** App (shamwari-ai org).
-Moved here from `nyuchi/web-services/worker` with its history.
+Shamwari for GitHub: a Cloudflare Worker (`shamwari-github-mcp`), written in
+Rust, serving an MCP server, an A2A endpoint and a GitHub webhook at
+**github.shamwari.ai**, acting on GitHub only as the **Shamwari for GitHub**
+App, owned by the bundu-labs enterprise. Moved here from
+`nyuchi/web-services/worker` with its history.
 
 ## Rules
 
 - **Big work lives in GitHub issues** in this repo: plan, decisions and
   status, so another session can pick it up. Open or update the issue before
   starting, and link it from the PR.
-- Branches: feature PRs target `staging`. `staging` to `main` is a release.
-  Squash or rebase only, linear history, no bypassing rulesets, no
-  `--no-verify`. A staging merge is a patch release. Main gets a minor.
+- Branches: trunk-based. Pull requests target `main`, and a merge to `main` is
+  built and deployed by Cloudflare Workers Builds (not GitHub Actions: no
+  Cloudflare secret lives in GitHub) and released (the version is the next
+  tag, bumped from the PR title). There is **no `staging` branch** and it is never re-added. Go
+  through the merge queue (`gh pr merge <n>`, no strategy flag), no bypassing
+  rulesets, no `--no-verify`.
 - Checks: the org-required "Org lint" workflow runs the `vite-plus` jobs (fmt,
-  check, test, build) and the `lint` jobs (actionlint, markdownlint,
-  yamllint). Locally: `npm run check && npm test && npm run build`.
+  check, test, build: only `fmt` does work here, on Markdown and JSON, as
+  there is no root `package.json`) and the `lint` jobs (actionlint,
+  markdownlint, yamllint). The repository's own workflow runs rustfmt,
+  clippy, `cargo test` and a wrangler dry-run build. Locally:
+  `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test`.
 - Secrets: never print, commit or pass in argv. They live in 1Password
   (`shamwari-ai/github-app`) and reach the Worker via
-  `scripts/github-app-convert.sh secrets`. `wrangler deploy` replaces
+  `scripts/github-app-convert.sh secrets`. `GITHUB_APP_ID` is a public var;
+  the key and webhook secret are secrets. `wrangler deploy` replaces
   `[vars]`, so every non-secret setting lives in `wrangler.toml`, never only in
   the dashboard. A dashboard edit is how `github.shmwari.ai` happened.
 - The OAuth resource URL is derived from the request host
-  (`resourceUrlFor`, `MCP_RESOURCE_HOSTS`). Never hardcode a host in code
+  (`resource_url_for`, `MCP_RESOURCE_HOSTS`). Never hardcode a host in code
   paths, and never hardcode the AuthKit domain (`WORKOS_AUTHORIZATION_SERVER`
   is config only).
 - Every host in `MCP_RESOURCE_HOSTS` must also be registered as an AuthKit
@@ -51,9 +59,12 @@ Load the Mzizi **dev skills** before starting work:
 
 ## Layout
 
-- `src/`: Worker (`index.ts` routes, `auth.ts` WorkOS + resource metadata,
-  `github.ts` App JWT and installation tokens, `mcp.ts` tools, `review.ts` the
-  reviewer, `webhook.ts`, `a2a.ts`, `setup.ts` App setup pages)
-- `test/`: `node:test` via tsx
+- `src/`: the Worker (`router.rs` routes, `auth.rs` WorkOS + resource metadata,
+  `github.rs` App JWT and installation tokens, `mcp.rs` tools and protocol,
+  `review.rs` the reviewer, `webhook.rs`, `a2a.rs`, `setup.rs` App setup pages,
+  `worker_entry.rs` the only module that touches the Workers runtime)
+- `src/tests/`: `cargo test` suite; `scripts/smoke-local.sh` runs the built wasm
 - `app-manifest.json`: the GitHub App definition (see docs/github-app.md)
+- `docs/`: `behaviour-contract.md`, `rust-port.md` (parity with the TypeScript
+  Worker), `github-app.md`, `enterprise-app-setup.md` (owner runbook)
 - `scripts/github-app-convert.sh`: owner-only credential plumbing

@@ -1,0 +1,28 @@
+# Trunk-based versioning (nyuchi/.github): every green merge to main is a
+# release. The bump comes from the semantic title of the merged pull request
+# (feat: minor; fix:, chore:, ci:, docs:, build: patch; a breaking change is a
+# major, made by hand with workflow_dispatch). The version lives in tags only;
+# nothing is committed back. This replaces staging-version.yml, which versioned
+# merges into the staging branch this repository no longer has.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Override the bump: patch, minor or major. Empty decides from the PR title."
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    uses: nyuchi/.github/.github/workflows/reusable-trunk-release.yml@ef07da8dfce087c16ea643607a49d8ecdbe1907e # main, 2026-11-21
+    with:
+      bump: ${{ inputs.bump || '' }}
